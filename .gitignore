@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.pyc
+
+# Secrets / env
+.env
+service-account-key.json
+
+# Logs (transcribe/batch_transcribe_vertex.py writes a log next to the script)
+*.log
+
+# Virtualenvs (.venv, .venv-realign, .venv311, ...)
+.venv*/
+env/
+venv/
+
+# OS
+.DS_Store
+
+# Tools
+rclone.exe
+rclone
+
+# Generated output (batch realign / transcribe pipeline)
+out/
+
+# Test media + fixtures (large audio, srt, txt - not for git)
+test-files/
