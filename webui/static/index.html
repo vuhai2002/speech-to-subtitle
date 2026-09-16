@@ -1,11 +1,28 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
-  <meta charset="utf-8">
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <title>speech-to-subtitle</title>
+  <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-  <!-- Placeholder app shell. Task 9 replaces this with the full UI (Run/Jobs/Settings views, SSE). -->
-  <p>speech-to-subtitle web UI is not built yet.</p>
+  <header class="topbar">
+    <div class="brand">speech-to-subtitle</div>
+    <div class="status"><span id="gpu" class="badge">GPU: ...</span></div>
+  </header>
+  <div class="shell">
+    <nav class="sidebar">
+      <button data-view="run" class="nav active">Run</button>
+      <button data-view="jobs" class="nav">Jobs</button>
+      <button data-view="settings" class="nav">Settings</button>
+      <a class="nav" href="https://github.com/vuhai2002/speech-to-subtitle" target="_blank">Docs</a>
+    </nav>
+    <main class="content">
+      <section id="view-run" class="view"></section>
+      <section id="view-jobs" class="view hidden"></section>
+      <section id="view-settings" class="view hidden"></section>
+    </main>
+  </div>
+  <script src="/static/app.js"></script>
 </body>
 </html>
