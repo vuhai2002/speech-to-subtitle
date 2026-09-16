@@ -5,6 +5,7 @@ ordered chain of subprocess steps that reuse the existing pipeline CLIs.
 """
 import sys
 from dataclasses import dataclass, field
+from pathlib import Path
 
 
 @dataclass
@@ -98,3 +99,39 @@ def _vertex_steps(output, input_path, out_dir, model, prompt_file) -> list[Step]
                                      "--txt-dir", out_dir, "--audio-dir", stage,
                                      "--out-dir", out_dir, "--window-sec", "1500"]))
     return steps
+
+
+import subprocess
+
+
+def detect_gpu() -> bool:
+    try:
+        out = subprocess.run([sys.executable, "-c", "import torch;print(torch.cuda.is_available())"],
+                             capture_output=True, text=True, timeout=60)
+        return out.stdout.strip() == "True"
+    except Exception:
+        return False
+
+
+def test_backend(backend: str, values: dict) -> tuple[bool, str]:
+    """Light auth/connectivity probe. Returns (ok, message). Network call - not unit tested."""
+    try:
+        if backend == "mai":
+            import urllib.request
+            req = urllib.request.Request("https://openrouter.ai/api/v1/models",
+                                         headers={"Authorization": "Bearer " + values.get("OPENROUTER_API_KEY", "")})
+            with urllib.request.urlopen(req, timeout=20) as r:
+                return (r.status == 200, f"HTTP {r.status}")
+        if backend == "router":
+            import urllib.request
+            base = values.get("ROUTER_BASE_URL", "").rstrip("/")
+            req = urllib.request.Request(base + "/models",
+                                         headers={"Authorization": "Bearer " + values.get("ROUTER_API_KEY", "")})
+            with urllib.request.urlopen(req, timeout=20) as r:
+                return (r.status == 200, f"HTTP {r.status}")
+        if backend == "vertex":
+            key = values.get("GOOGLE_APPLICATION_CREDENTIALS", "")
+            return (bool(key) and Path(key).exists(), "credentials file found" if key else "no credentials path")
+    except Exception as e:                                # noqa: BLE001
+        return (False, str(e)[:200])
+    return (False, "unknown backend")
