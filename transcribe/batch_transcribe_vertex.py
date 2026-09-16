@@ -87,6 +87,15 @@ Nghe file âm thanh đính kèm và chép lại toàn bộ nội dung thành vă
 5. Trả về văn bản xuôi, chỉ nội dung, không lời dẫn hay giải thích.
 """
 
+
+def resolve_prompt(prompt_file):
+    """Return TRANSCRIBE_PROMPT, or the contents of prompt_file when provided."""
+    if prompt_file:
+        with open(prompt_file, encoding="utf-8") as f:
+            return f.read()
+    return TRANSCRIBE_PROMPT
+
+
 AUDIO_EXTENSIONS = {".mp3", ".wav", ".m4a", ".flac", ".ogg", ".aac", ".wma"}
 
 MIME_TYPES = {
@@ -182,6 +191,7 @@ def transcribe_audio(
     audio_path: str,
     model_name: str,
     max_retries: int = 2,
+    prompt: str = TRANSCRIBE_PROMPT,
 ) -> str | None:
     """
     Upload audio to GCS, call Gemini via Vertex AI to transcribe,
@@ -218,7 +228,7 @@ def transcribe_audio(
                     model=model_name,
                     contents=[
                         types.Part.from_uri(file_uri=gcs_uri, mime_type=mime_type),
-                        TRANSCRIBE_PROMPT,
+                        prompt,
                     ],
                     config=types.GenerateContentConfig(
                         max_output_tokens=65536,
@@ -326,7 +336,8 @@ def transcribe_audio(
 # ============================================================
 # WORKER FUNCTION
 # ============================================================
-def process_one_file(client, storage_client, bucket_name, f, txt_dir, model_name, max_retries, tracker, idx, total):
+def process_one_file(client, storage_client, bucket_name, f, txt_dir, model_name, max_retries, tracker, idx, total,
+                      prompt=TRANSCRIBE_PROMPT):
     """Worker function that processes one file. Runs in the thread pool."""
     name = f["name"]
     mp3_path = f["path"]
@@ -342,7 +353,7 @@ def process_one_file(client, storage_client, bucket_name, f, txt_dir, model_name
     try:
         text_result = transcribe_audio(
             client, storage_client, bucket_name,
-            mp3_path, model_name, max_retries=max_retries,
+            mp3_path, model_name, max_retries=max_retries, prompt=prompt,
         )
         elapsed = time.time() - file_start_time
 
@@ -387,7 +398,7 @@ def find_mp3_files(mp3_dir):
 
 
 def run_batch(client, storage_client, bucket_name, mp3_dir, txt_dir, model_name,
-              max_retries=2, force=False, workers=5):
+              max_retries=2, force=False, workers=5, prompt=TRANSCRIBE_PROMPT):
     """Run batch transcribe in parallel via Vertex AI."""
     os.makedirs(txt_dir, exist_ok=True)
 
@@ -452,6 +463,7 @@ def run_batch(client, storage_client, bucket_name, mp3_dir, txt_dir, model_name,
                 process_one_file,
                 client, storage_client, bucket_name,
                 f, txt_dir, model_name, max_retries, tracker, idx, total,
+                prompt=prompt,
             )
             futures[future] = f["name"]
 
@@ -502,6 +514,7 @@ if __name__ == "__main__":
     parser.add_argument("--retry", type=int, default=2, help="Number of retries on error")
     parser.add_argument("--workers", type=int, default=DEFAULT_WORKERS, help="Number of parallel threads")
     parser.add_argument("--force", action="store_true", help="Re-run everything, including files that already have TXT")
+    parser.add_argument("--prompt-file", default=None, help="Path to a text file with a prompt override (default: built-in TRANSCRIBE_PROMPT)")
 
     args = parser.parse_args()
 
@@ -552,4 +565,5 @@ if __name__ == "__main__":
         client, storage_client, bucket_name,
         args.mp3_dir, args.txt_dir, model_name,
         max_retries=args.retry, force=args.force, workers=args.workers,
+        prompt=resolve_prompt(args.prompt_file),
     )

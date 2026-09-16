@@ -53,10 +53,10 @@ def _process_chunk(c: dict, out: Path, mono: str, prompt: str, log_lock: threadi
     return rec
 
 
-def run(input_path: str, out_dir: str) -> dict:
+def run(input_path: str, out_dir: str, prompt_file: str | None = None) -> dict:
     out = Path(out_dir)
     (out / "chunks").mkdir(parents=True, exist_ok=True)
-    prompt = config.load_prompt()
+    prompt = config.load_prompt(prompt_file)
 
     mono = str(out / "mono16k.mp3")
     print(f"{_now()} [1/4] ffmpeg -> mono 16kHz", flush=True)
@@ -98,13 +98,14 @@ def main():
     ap.add_argument("--out-dir", required=True)
     ap.add_argument("--model", default=None, help="default: config.MODEL")
     ap.add_argument("--workers", type=int, default=None, help="number of chunks sent in parallel, default config.CONCURRENCY")
+    ap.add_argument("--prompt-file", default=None, help="path to a text file with a prompt override (default: built-in prompt)")
     a = ap.parse_args()
     if a.model:
         config.MODEL = a.model
     if a.workers:
         config.CONCURRENCY = a.workers
     t0 = time.time()
-    run(a.input, a.out_dir)
+    run(a.input, a.out_dir, a.prompt_file)
     print(f"total time {time.time() - t0:.0f}s")
 
 

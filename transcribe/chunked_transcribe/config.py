@@ -44,8 +44,11 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 VERTEX_SCRIPT = PROJECT_ROOT / "transcribe" / "batch_transcribe_vertex.py"
 
 
-def load_prompt() -> str:
-    """Read the TRANSCRIBE_PROMPT variable from the Vertex script (single source of truth for the prompt)."""
+def load_prompt(prompt_file: str | None = None) -> str:
+    """Return the transcription prompt. If prompt_file is given, read it; otherwise read
+    TRANSCRIBE_PROMPT from the Vertex script (single source of truth)."""
+    if prompt_file:
+        return Path(prompt_file).read_text(encoding="utf-8")
     src = VERTEX_SCRIPT.read_text(encoding="utf-8")
     for node in ast.parse(src).body:
         if isinstance(node, ast.Assign) and any(getattr(t, "id", None) == "TRANSCRIBE_PROMPT" for t in node.targets):
