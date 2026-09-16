@@ -1,5 +1,8 @@
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 from webui.server import create_app
+from webui.jobs import Job, JobManager
 
 
 def _client(tmp_path):
@@ -29,3 +32,29 @@ def test_settings_roundtrip(tmp_path):
     # secrets are masked in the GET
     assert r.json()["values"]["OPENROUTER_API_KEY"].endswith("test")
     assert "*" in r.json()["values"]["OPENROUTER_API_KEY"]
+
+
+def test_download_and_traversal(tmp_path):
+    # Seed a finished job directly (no need to run a real subprocess): register it with a
+    # JobManager pointed at the state dir, then create the app so it loads that same job.
+    state = tmp_path / "state"
+    jm = JobManager(str(state))
+    j = Job(id="abcd1234", backend="mai", output="txt", source="a.m4a", out_dir=str(state / "abcd1234"))
+    Path(j.out_dir).mkdir(parents=True, exist_ok=True)
+    (Path(j.out_dir) / "out.srt").write_text("SUB", encoding="utf-8")
+    (tmp_path / "secret.txt").write_text("TOP", encoding="utf-8")
+    jm._jobs[j.id] = j
+    jm._save()
+
+    c = _client(tmp_path)
+    ok = c.get(f"/api/jobs/{j.id}/download", params={"name": "out.srt"})
+    assert ok.status_code == 200 and ok.text == "SUB"
+
+    traversal = c.get(f"/api/jobs/{j.id}/download", params={"name": "../../secret.txt"})
+    assert traversal.status_code == 404
+
+    missing_job = c.get("/api/jobs/doesnotexist/download", params={"name": "out.srt"})
+    assert missing_job.status_code == 404
+
+    missing_job_events = c.get("/api/jobs/doesnotexist/events")
+    assert missing_job_events.status_code == 404

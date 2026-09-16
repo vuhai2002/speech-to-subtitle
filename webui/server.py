@@ -4,6 +4,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from . import backends, settings as settings_mod
 from .jobs import JobManager
@@ -15,6 +16,7 @@ _TERMINAL_STATUSES = {"done", "error", "stopped"}
 
 def create_app(state_dir: str, env_path: str) -> FastAPI:
     app = FastAPI()
+    app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")
     jm = JobManager(state_dir)
     has_gpu = backends.detect_gpu()
 
@@ -79,13 +81,22 @@ def create_app(state_dir: str, env_path: str) -> FastAPI:
         j = jm.get(job_id)
         if not j:
             return JSONResponse({"error": "not found"}, status_code=404)
-        path = Path(j.out_dir) / name
-        return FileResponse(str(path), filename=Path(name).name)
+        # Contain the resolved path inside out_dir: `name` is caller-controlled, so
+        # "../../etc/passwd" or an absolute path must not be able to escape it.
+        base = Path(j.out_dir).resolve()
+        target = (base / name).resolve()
+        if not target.is_relative_to(base) or not target.is_file():
+            return JSONResponse({"error": "invalid file"}, status_code=404)
+        return FileResponse(str(target), filename=target.name)
 
     @app.get("/api/jobs/{job_id}/events")
     def events(job_id: str):
-        q = jm.subscribe(job_id)
         j = jm.get(job_id)
+        if not j:
+            # Guard before subscribe(): an unknown job never emits a sentinel, so entering
+            # the loop below on a bad id would block a threadpool thread forever.
+            return JSONResponse({"error": "not found"}, status_code=404)
+        q = jm.subscribe(job_id)
 
         def gen():
             for ln in (j.log if j else []):
