@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640" font-family="'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b1220"/>
+      <stop offset="1" stop-color="#0e2134"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#22d3ee"/>
+      <stop offset="1" stop-color="#34d399"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1280" height="640" fill="url(#bg)"/>
+  <circle cx="1130" cy="110" r="230" fill="#12344c" opacity="0.35"/>
+  <circle cx="150" cy="560" r="190" fill="#123a33" opacity="0.30"/>
+
+  <text x="640" y="92" text-anchor="middle" fill="#67e8f9" font-size="22" font-weight="600" letter-spacing="4">OPEN SOURCE / MIT / PYTHON</text>
+
+  <text x="640" y="178" text-anchor="middle" fill="#f1f5f9" font-size="78" font-weight="700" letter-spacing="1">speech-to-subtitle</text>
+  <rect x="570" y="198" width="140" height="6" rx="3" fill="url(#accent)"/>
+
+  <text x="640" y="252" text-anchor="middle" fill="#cbd5e1" font-size="27">From any audio or video to broadcast-quality, time-aligned subtitles</text>
+
+  <!-- pipeline -->
+  <g>
+    <!-- node 1 -->
+    <rect x="108" y="316" width="176" height="92" rx="14" fill="#132537" stroke="#2a4a66" stroke-width="1.5"/>
+    <text x="196" y="358" text-anchor="middle" fill="#e2e8f0" font-size="24" font-weight="600">Audio / Video</text>
+    <text x="196" y="386" text-anchor="middle" fill="#7c93a8" font-size="13">mp3 / mp4 / wav</text>
+    <!-- node 2 -->
+    <rect x="330" y="316" width="176" height="92" rx="14" fill="#132537" stroke="#2a4a66" stroke-width="1.5"/>
+    <text x="418" y="358" text-anchor="middle" fill="#e2e8f0" font-size="24" font-weight="600">Transcribe</text>
+    <text x="418" y="386" text-anchor="middle" fill="#7c93a8" font-size="13">chunked + parallel</text>
+    <!-- node 3 -->
+    <rect x="552" y="316" width="176" height="92" rx="14" fill="#132537" stroke="#2a4a66" stroke-width="1.5"/>
+    <text x="640" y="358" text-anchor="middle" fill="#e2e8f0" font-size="24" font-weight="600">Self-check</text>
+    <text x="640" y="386" text-anchor="middle" fill="#7c93a8" font-size="13">grounded in audio</text>
+    <!-- node 4 -->
+    <rect x="774" y="316" width="176" height="92" rx="14" fill="#132537" stroke="#2a4a66" stroke-width="1.5"/>
+    <text x="862" y="358" text-anchor="middle" fill="#e2e8f0" font-size="24" font-weight="600">Forced align</text>
+    <text x="862" y="386" text-anchor="middle" fill="#7c93a8" font-size="13">MMS word-level</text>
+    <!-- node 5 (output) -->
+    <rect x="996" y="316" width="176" height="92" rx="14" fill="url(#accent)"/>
+    <text x="1084" y="358" text-anchor="middle" fill="#06263a" font-size="26" font-weight="700">.srt</text>
+    <text x="1084" y="386" text-anchor="middle" fill="#0f3b2e" font-size="13" font-weight="600">broadcast cues</text>
+
+    <!-- arrows -->
+    <g stroke="url(#accent)" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="292" y1="362" x2="322" y2="362"/>
+      <path d="M314 355 L322 362 L314 369"/>
+      <line x1="514" y1="362" x2="544" y2="362"/>
+      <path d="M536 355 L544 362 L536 369"/>
+      <line x1="736" y1="362" x2="766" y2="362"/>
+      <path d="M758 355 L766 362 L758 369"/>
+      <line x1="958" y1="362" x2="988" y2="362"/>
+      <path d="M980 355 L988 362 L980 369"/>
+    </g>
+  </g>
+
+  <text x="640" y="496" text-anchor="middle" fill="#94a3b8" font-size="19">Long-form safe  -  Omission + hallucination checks  -  Word-accurate timing  -  Broadcast cue rules</text>
+
+  <text x="640" y="586" text-anchor="middle" fill="#64748b" font-size="18">Tuned for Vietnamese, works beyond  -  github.com/vuhai2002/speech-to-subtitle</text>
+</svg>

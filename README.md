@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/banner.svg" alt="speech-to-subtitle - from any audio or video to broadcast-quality, time-aligned subtitles" width="100%">
+</p>
+
 # speech-to-subtitle
 
 **Turn any audio or video into a clean transcript or broadcast-quality, time-aligned subtitles.**
