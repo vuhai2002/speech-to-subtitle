@@ -2,7 +2,7 @@
 import sys
 import time
 from webui.backends import Step
-from webui.jobs import JobManager
+from webui.jobs import Job, JobManager
 
 
 def _fake_step(label, out_lines):
@@ -52,6 +52,27 @@ def test_stop_marks_stopped(tmp_path):
             break
         time.sleep(0.05)
     assert jm.get(job.id).status == "stopped"
+
+
+def test_collect_finds_vertex_and_toplevel_outputs(tmp_path):
+    jm = JobManager(str(tmp_path))
+    out_dir = tmp_path / "job1"
+    (out_dir / "srt").mkdir(parents=True)
+    (out_dir / "srt" / "talk.srt").write_text("1\n", encoding="utf-8")
+    (out_dir / "talk.txt").write_text("transcript\n", encoding="utf-8")
+    (out_dir / "chunks").mkdir()
+    (out_dir / "chunks" / "01.txt").write_text("chunk\n", encoding="utf-8")
+    (out_dir / "_meta").mkdir()
+    (out_dir / "_meta" / "prompt.txt").write_text("do X\n", encoding="utf-8")
+
+    job = Job(id="job1", backend="vertex", output="srt", source="a.m4a", out_dir=str(out_dir))
+    result = jm._collect(job)
+
+    assert "srt/talk.srt" in result["files"]
+    assert "talk.txt" in result["files"]
+    assert "chunks/01.txt" not in result["files"]
+    assert "_meta/prompt.txt" not in result["files"]
+    assert not any("prompt" in f for f in result["files"])
 
 
 def test_failing_step_marks_error(tmp_path):

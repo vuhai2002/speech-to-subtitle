@@ -145,12 +145,20 @@ class JobManager:
         return {**os.environ, **step.env}
 
     def _collect(self, job: Job) -> dict:
-        # Bare filenames (not a path relative to state_dir): the download route joins
-        # this directly onto job.out_dir, so the name here must match that exactly.
+        # Names are paths relative to out_dir (posix separators): the download route joins
+        # this directly onto job.out_dir with an is_relative_to containment check, so a
+        # relative subpath like "srt/x.srt" resolves safely there.
         out = Path(job.out_dir)
-        files = [p.name for p in out.glob("*.srt")] if out.exists() else []
-        files += [p.name for p in out.glob("raw_transcript.txt")] if out.exists() else []
-        return {"files": files}
+        if not out.exists():
+            return {"files": []}
+        # .srt collected recursively: Vertex writes to out_dir/srt/<stem>.srt, other
+        # backends write out_dir/<stem>.srt directly.
+        files = [str(p.relative_to(out)).replace("\\", "/") for p in out.rglob("*.srt")]
+        # .txt collected only at the top level (raw_transcript.txt / <stem>.txt), so
+        # per-chunk transcripts under chunks/ and the prompt override under _meta/ are
+        # never surfaced as downloadable results.
+        files += [p.name for p in out.glob("*.txt")]
+        return {"files": sorted(set(files))}
 
     def start_from(self, backend, output, source, has_gpu, model, workers, prompt) -> Job:
         """Build the step chain for one run and start it. Kept on JobManager (rather than
@@ -160,8 +168,12 @@ class JobManager:
         out_dir = str(self.state_dir / job_id)
         prompt_file = None
         if prompt:
-            Path(out_dir).mkdir(parents=True, exist_ok=True)
-            prompt_file = str(Path(out_dir) / "prompt.txt")
+            # Keep the prompt out of out_dir's top level: for Vertex, out_dir doubles as
+            # the realign --txt-dir, so a stray prompt.txt there would be picked up by
+            # run_batch as a transcript, and by _collect's top-level *.txt glob.
+            meta_dir = Path(out_dir) / "_meta"
+            meta_dir.mkdir(parents=True, exist_ok=True)
+            prompt_file = str(meta_dir / "prompt.txt")
             Path(prompt_file).write_text(prompt, encoding="utf-8")
         steps = build_steps(backend, output, source, out_dir, model=model, workers=workers, prompt_file=prompt_file)
         job = Job(id=job_id, backend=backend, output=output, source=source, out_dir=out_dir)

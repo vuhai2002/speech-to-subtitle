@@ -89,7 +89,7 @@ function openJob(id){
 function showResults(id, j){
   const files = (j.results && j.results.files) || [];
   $('#results').innerHTML = files.map(f =>
-    `<a class="btn ghost" href="/api/jobs/${id}/download?name=${encodeURIComponent(f)}">Download ${f}</a>`).join(' ');
+    `<a class="btn ghost" href="/api/jobs/${id}/download?name=${encodeURIComponent(f)}">Download ${f.split('/').pop()}</a>`).join(' ');
 }
 async function stopJob(id){ await fetch('/api/jobs/'+id+'/stop',{method:'POST'}); }
 function renderSettings(){
