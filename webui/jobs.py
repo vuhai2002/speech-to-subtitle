@@ -145,7 +145,27 @@ class JobManager:
         return {**os.environ, **step.env}
 
     def _collect(self, job: Job) -> dict:
+        # Bare filenames (not a path relative to state_dir): the download route joins
+        # this directly onto job.out_dir, so the name here must match that exactly.
         out = Path(job.out_dir)
-        files = [str(p.relative_to(self.state_dir)) for p in out.glob("*.srt")] if out.exists() else []
-        files += [str(p.relative_to(self.state_dir)) for p in out.glob("raw_transcript.txt")] if out.exists() else []
+        files = [p.name for p in out.glob("*.srt")] if out.exists() else []
+        files += [p.name for p in out.glob("raw_transcript.txt")] if out.exists() else []
         return {"files": files}
+
+    def start_from(self, backend, output, source, has_gpu, model, workers, prompt) -> Job:
+        """Build the step chain for one run and start it. Kept on JobManager (rather than
+        in the server route) so the server stays a thin HTTP layer over webui.* logic."""
+        from .backends import build_steps
+        job_id = uuid.uuid4().hex[:8]
+        out_dir = str(self.state_dir / job_id)
+        prompt_file = None
+        if prompt:
+            Path(out_dir).mkdir(parents=True, exist_ok=True)
+            prompt_file = str(Path(out_dir) / "prompt.txt")
+            Path(prompt_file).write_text(prompt, encoding="utf-8")
+        steps = build_steps(backend, output, source, out_dir, model=model, workers=workers, prompt_file=prompt_file)
+        job = Job(id=job_id, backend=backend, output=output, source=source, out_dir=out_dir)
+        self._jobs[job.id] = job
+        self._save()
+        threading.Thread(target=self._run, args=(job, steps), daemon=True).start()
+        return job
