@@ -102,6 +102,17 @@ For the MAI path, subtitles come straight from its native timestamps, no GPU nee
 
 ---
 
+## Web UI (optional)
+
+A local browser UI wraps the pipeline (pick audio, choose backend, run, download subtitles):
+
+    pip install -r requirements-webui.txt
+    python -m webui
+
+It runs on 127.0.0.1 only. See `webui/README.md` and `docs/webui-design.md`.
+
+---
+
 ## Quality controls in depth
 
 - **Chunking at silence.** VAD (silero) finds speech; chunks are cut in the longest silence near each ~10-minute mark, so no word is split across chunks.
