@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -58,3 +59,22 @@ def test_download_and_traversal(tmp_path):
 
     missing_job_events = c.get("/api/jobs/doesnotexist/events")
     assert missing_job_events.status_code == 404
+
+
+def test_env_loaded_into_process(tmp_path):
+    # MAI/Router subprocesses read their keys via os.getenv(...) from the process
+    # environment, not from .env directly. create_app must load .env into os.environ so a
+    # key saved in Settings actually reaches those subprocesses; distinctive values here so
+    # this doesn't depend on (or get masked by) whatever is already in the real environment.
+    env_path = tmp_path / ".env"
+    env_path.write_text("OPENROUTER_API_KEY=sk-bridgetest\n", encoding="utf-8")
+    try:
+        c = TestClient(create_app(str(tmp_path / "state"), str(env_path)))
+        assert os.environ.get("OPENROUTER_API_KEY") == "sk-bridgetest"
+
+        r = c.post("/api/settings", json={"MAI_MODEL": "microsoft/mai-transcribe-2"})
+        assert r.status_code == 200
+        assert os.environ.get("MAI_MODEL") == "microsoft/mai-transcribe-2"
+    finally:
+        os.environ.pop("OPENROUTER_API_KEY", None)
+        os.environ.pop("MAI_MODEL", None)

@@ -1,5 +1,6 @@
 """FastAPI app: serve the single-page UI and the JSON/SSE APIs. Thin layer over webui.* modules."""
 import json
+import os
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -19,6 +20,11 @@ def create_app(state_dir: str, env_path: str) -> FastAPI:
     app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")
     jm = JobManager(state_dir)
     has_gpu = backends.detect_gpu()
+    # MAI/Router subprocesses read their API keys via os.getenv(...) from the process
+    # environment; they do not load .env themselves (unlike the Vertex script). Load the
+    # saved values into this process so JobManager's subprocess env (os.environ + step.env)
+    # actually carries keys entered in Settings.
+    os.environ.update(settings_mod.read_env(env_path))
 
     @app.get("/", response_class=HTMLResponse)
     def index():
@@ -44,7 +50,9 @@ def create_app(state_dir: str, env_path: str) -> FastAPI:
     @app.post("/api/settings")
     async def post_settings(req: Request):
         updates = await req.json()
-        settings_mod.write_env(env_path, {k: str(v) for k, v in updates.items() if v not in ("", None)})
+        applied = {k: str(v) for k, v in updates.items() if v not in ("", None)}
+        settings_mod.write_env(env_path, applied)
+        os.environ.update(applied)  # take effect immediately, no server restart needed
         return {"ok": True}
 
     @app.post("/api/test/{backend}")
