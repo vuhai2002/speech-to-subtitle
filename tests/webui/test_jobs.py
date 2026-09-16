@@ -32,3 +32,34 @@ def test_history_persists(tmp_path):
         time.sleep(0.05)
     jm2 = JobManager(str(tmp_path))                 # reload from disk
     assert any(x.id == job.id for x in jm2.list())
+
+
+def test_stop_marks_stopped(tmp_path):
+    jm = JobManager(str(tmp_path))
+    step = Step("t", [sys.executable, "-c", "import time; print('10:00 [1/4] x'); time.sleep(30)"])
+    job = jm.start("mai", "txt", "a.m4a", [step])
+    for _ in range(100):
+        if jm.get(job.id).status == "running":
+            break
+        time.sleep(0.05)
+    # Retry stop(): status flips to "running" before the subprocess is registered in
+    # self._procs, so the very first stop() call can land in that narrow window and be a
+    # no-op. Re-issuing it is harmless (stop() is idempotent once the proc is gone) and
+    # avoids a flaky test without changing JobManager's behavior.
+    for _ in range(100):
+        jm.stop(job.id)
+        if jm.get(job.id).status in ("stopped", "done", "error"):
+            break
+        time.sleep(0.05)
+    assert jm.get(job.id).status == "stopped"
+
+
+def test_failing_step_marks_error(tmp_path):
+    jm = JobManager(str(tmp_path))
+    step = Step("t", [sys.executable, "-c", "import sys; sys.exit(2)"])
+    job = jm.start("mai", "txt", "a.m4a", [step])
+    for _ in range(100):
+        if jm.get(job.id).status in ("done", "error", "stopped"):
+            break
+        time.sleep(0.05)
+    assert jm.get(job.id).status == "error"

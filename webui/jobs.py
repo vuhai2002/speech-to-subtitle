@@ -6,6 +6,7 @@ survives a restart. State lives under a gitignored directory (out/webui by defau
 from __future__ import annotations
 
 import json
+import os
 import queue
 import subprocess
 import threading
@@ -41,6 +42,8 @@ class JobManager:
         self._jobs: dict[str, Job] = {}
         self._procs: dict[str, subprocess.Popen] = {}
         self._subs: dict[str, list[queue.Queue]] = {}
+        self._stopped: set[str] = set()      # job ids stopped via stop(), so _run can tell
+                                              # a user-requested stop apart from a real failure
         self._load()
 
     # ---- history persistence ----
@@ -48,13 +51,23 @@ class JobManager:
         return self.state_dir / "jobs.json"
 
     def _load(self) -> None:
-        if self._index().exists():
-            for d in json.loads(self._index().read_text(encoding="utf-8")):
-                self._jobs[d["id"]] = Job(**d)
+        if not self._index().exists():
+            return
+        try:
+            rows = json.loads(self._index().read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError, ValueError):
+            return                            # corrupt history: start fresh instead of raising
+        for d in rows:
+            self._jobs[d["id"]] = Job(**d)
 
     def _save(self) -> None:
+        # Write to a temp file then atomically replace, so a crash mid-write never leaves
+        # jobs.json half-written (which would make the next _load fail).
         rows = [asdict(j) for j in sorted(self._jobs.values(), key=lambda x: x.created, reverse=True)]
-        self._index().write_text(json.dumps(rows, ensure_ascii=False, indent=1), encoding="utf-8")
+        index = self._index()
+        tmp = index.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(rows, ensure_ascii=False, indent=1), encoding="utf-8")
+        os.replace(tmp, index)
 
     # ---- api ----
     def get(self, job_id: str) -> Job | None:
@@ -73,8 +86,9 @@ class JobManager:
             q.put((kind, payload))
 
     def start(self, backend: str, output: str, source: str, steps: list[Step]) -> Job:
-        job = Job(id=uuid.uuid4().hex[:8], backend=backend, output=output, source=source,
-                  out_dir=str(self.state_dir / uuid.uuid4().hex[:8]))
+        job_id = uuid.uuid4().hex[:8]
+        job = Job(id=job_id, backend=backend, output=output, source=source,
+                  out_dir=str(self.state_dir / job_id))       # dir derivable from the job id
         self._jobs[job.id] = job
         self._save()
         threading.Thread(target=self._run, args=(job, steps), daemon=True).start()
@@ -83,6 +97,7 @@ class JobManager:
     def stop(self, job_id: str) -> None:
         p = self._procs.get(job_id)
         if p and p.poll() is None:
+            self._stopped.add(job_id)        # record intent before terminate() races _run()
             p.terminate()
 
     def _run(self, job: Job, steps: list[Step]) -> None:
@@ -105,8 +120,13 @@ class JobManager:
                         self._emit(job, "status", job.status)
                     self._emit(job, "log", line)
                 proc.wait()
+                if job.id in self._stopped:
+                    # Explicit stop request: do not trust the returncode sign to mean "killed"
+                    # (terminate() gives 1 on Windows, not a negative signal number like POSIX).
+                    job.status = "stopped"
+                    break
                 if proc.returncode != 0:
-                    job.status = "stopped" if proc.returncode < 0 else "error"
+                    job.status = "error"
                     break
             else:
                 job.status = "done"
@@ -115,13 +135,13 @@ class JobManager:
             job.status = "error"
         finally:
             self._procs.pop(job.id, None)
+            self._stopped.discard(job.id)
             job.results = self._collect(job)
             self._save()
             self._emit(job, "status", job.status)
             self._emit(job, "log", None)                  # sentinel: stream closed
 
     def _env(self, step: Step) -> dict:
-        import os
         return {**os.environ, **step.env}
 
     def _collect(self, job: Job) -> dict:
