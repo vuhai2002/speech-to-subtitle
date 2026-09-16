@@ -7,11 +7,11 @@ async function boot(){
   document.querySelectorAll('.nav[data-view]').forEach(b => b.onclick = () => show(b.dataset.view));
   renderRun(); renderSettings(); show('run');
 }
-function show(v){
+async function show(v){
   document.querySelectorAll('.view').forEach(s => s.classList.add('hidden'));
   document.querySelectorAll('.nav[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view===v));
   $('#view-'+v).classList.remove('hidden');
-  if(v==='jobs') renderJobs();
+  if(v==='jobs') await renderJobs();
 }
 function backendOptions(){
   return Object.entries(CFG.backends).map(([k,b]) => `<option value="${k}">${b.label}</option>`).join('');
@@ -58,7 +58,8 @@ async function startJob(){
   const r = await fetch('/api/jobs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   if(!r.ok){ return alert((await r.json()).error); }
   const {id} = await r.json();
-  show('jobs'); openJob(id);
+  await show('jobs');
+  openJob(id);
 }
 async function renderJobs(){
   const {jobs} = await (await fetch('/api/jobs')).json();
@@ -70,7 +71,9 @@ async function renderJobs(){
     </tbody></table></div><div id="jobDetail"></div>`;
 }
 function openJob(id){
-  $('#jobDetail').innerHTML = `<div class="card"><div class="row" style="justify-content:space-between">
+  const detail = $('#jobDetail');
+  if(!detail) return;                        // jobs view not rendered yet; nothing to fill
+  detail.innerHTML = `<div class="card"><div class="row" style="justify-content:space-between">
     <div id="jstage" class="muted">stage: ...</div><button class="btn stop" onclick="stopJob('${id}')">Stop</button></div>
     <div id="results"></div><div class="log" id="log"></div></div>`;
   const es = new EventSource('/api/jobs/'+id+'/events');
