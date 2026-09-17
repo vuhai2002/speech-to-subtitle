@@ -17,6 +17,8 @@ async function boot(){
 
 const ICON_SUN = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
 const ICON_MOON = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>';
+const ICON_EYE = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>';
+const ICON_EYE_OFF = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.9 4.24A9.1 9.1 0 0 1 12 4c6.5 0 10 7 10 7a13.2 13.2 0 0 1-1.67 2.68M6.6 6.6A13.5 13.5 0 0 0 2 12s3.5 7 10 7a9.7 9.7 0 0 0 5.4-1.6"/><path d="M1 1l22 22"/></svg>';
 function initTheme(){ applyTheme(localStorage.getItem('theme') || 'dark'); }
 function applyTheme(t){
   document.documentElement.dataset.theme = t;
@@ -186,7 +188,13 @@ function renderSettings(){
   if(!settingsTab || !keys.includes(settingsTab)) settingsTab = keys[0];
   const tabs = keys.map(k => `<button class="tab ${k===settingsTab?'active':''}" onclick="selectSettingsTab('${k}')">${CFG.backends[k].label}</button>`).join('');
   const b = CFG.backends[settingsTab];
-  const fields = b.fields.map(f => `<label>${f.label}</label><input data-key="${f.key}" type="${f.secret?'password':'text'}" autocomplete="off">`).join('');
+  const fields = b.fields.map(f => {
+    const ph = f.placeholder ? ` placeholder="${f.placeholder}"` : '';
+    const input = `<input data-key="${f.key}" type="${f.secret?'password':'text'}"${ph} autocomplete="off">`;
+    if(!f.secret) return `<label>${f.label}</label>${input}`;
+    return `<label>${f.label}</label><div class="pw">${input}` +
+           `<button type="button" class="pw-toggle" title="Show" aria-label="Show key" onclick="togglePw(this)">${ICON_EYE}</button></div>`;
+  }).join('');
   $('#view-settings').innerHTML = `<h2>Settings</h2>
     <div class="tabs">${tabs}</div>
     <div class="card"><h3>${b.label}</h3>
@@ -201,9 +209,19 @@ function renderSettings(){
   loadSettings();
 }
 function selectSettingsTab(k){ settingsTab = k; renderSettings(); }
+function togglePw(btn){
+  const inp = btn.parentElement.querySelector('input'); if(!inp) return;
+  const reveal = inp.type === 'password';
+  inp.type = reveal ? 'text' : 'password';
+  btn.innerHTML = reveal ? ICON_EYE_OFF : ICON_EYE;
+  const lbl = reveal ? 'Hide key' : 'Show key';
+  btn.title = lbl; btn.setAttribute('aria-label', lbl);
+}
 async function loadSettings(){
+  // Load saved values into the fields (edit in place). Empty fields keep their example
+  // placeholder. A secret loads into its password field - shown as dots until the eye reveals it.
   const {values} = await (await fetch('/api/settings')).json();
-  document.querySelectorAll('#view-settings input[data-key]').forEach(i => { if(values[i.dataset.key]) i.placeholder = values[i.dataset.key]; });
+  document.querySelectorAll('#view-settings input[data-key]').forEach(i => { const v = values[i.dataset.key]; if(v) i.value = v; });
 }
 function collect(){
   const o = {};

@@ -58,6 +58,15 @@ textarea{min-height:260px;resize:vertical;font-family:ui-monospace,'Cascadia Cod
 select{cursor:pointer}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
 
+/* secret input with a show/hide eye toggle */
+.pw{position:relative}
+.pw input{padding-right:44px}
+.pw-toggle{position:absolute;right:6px;top:50%;transform:translateY(-50%);display:inline-flex;align-items:center;
+  justify-content:center;width:30px;height:30px;padding:0;background:none;border:none;border-radius:8px;
+  color:var(--muted);cursor:pointer;transition:color .15s,background .15s}
+.pw-toggle:hover{color:var(--text);background:var(--surface)}
+.pw-toggle:focus-visible{outline:none;box-shadow:0 0 0 3px var(--ring)}
+
 /* buttons: one primary per view, secondary for the rest, danger for destructive */
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;border:1px solid transparent;
   border-radius:10px;padding:9px 16px;font:inherit;font-size:14px;font-weight:600;cursor:pointer;

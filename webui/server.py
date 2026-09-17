@@ -12,7 +12,6 @@ from . import backends, settings as settings_mod
 from .jobs import JobManager
 
 STATIC = Path(__file__).resolve().parent / "static"
-SECRET_KEYS = {f["key"] for b in backends.BACKENDS.values() for f in b["fields"] if f["secret"]}
 _TERMINAL_STATUSES = {"done", "error", "stopped"}
 
 
@@ -70,9 +69,11 @@ def create_app(state_dir: str, env_path: str) -> FastAPI:
 
     @app.get("/api/settings")
     def get_settings():
-        env = settings_mod.read_env(env_path)
-        values = {k: (settings_mod.masked(v) if k in SECRET_KEYS else v) for k, v in env.items()}
-        return {"values": values}
+        # Return the real saved values so the form can load them into the fields (edit in
+        # place). The API key is loaded too, but the UI keeps it in a password field shown as
+        # dots until the eye toggle reveals it. Safe here: loopback only, single local user,
+        # and the key already sits in .env on this same machine.
+        return {"values": settings_mod.read_env(env_path)}
 
     @app.post("/api/settings")
     async def post_settings(req: Request):
@@ -84,8 +85,13 @@ def create_app(state_dir: str, env_path: str) -> FastAPI:
 
     @app.post("/api/test/{backend}")
     async def test(backend: str, req: Request):
-        values = await req.json()
-        ok, msg = backends.test_backend(backend, values)
+        posted = await req.json()
+        # Fields left blank in the form fall back to the saved .env values, so a
+        # backend can be tested without re-typing its masked secret. Non-empty
+        # posted values (a key the user just typed) take precedence.
+        merged = dict(settings_mod.read_env(env_path))
+        merged.update({k: v for k, v in posted.items() if v not in ("", None)})
+        ok, msg = backends.probe_backend(backend, merged)
         return {"ok": ok, "message": msg}
 
     @app.post("/api/jobs")

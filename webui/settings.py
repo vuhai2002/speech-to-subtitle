@@ -33,10 +33,3 @@ def write_env(path: str, updates: dict[str, str]) -> None:
         if k not in seen:
             lines.append(f"{k}={v}")
     p.write_text("\n".join(lines) + "\n", encoding="utf-8")
-
-
-def masked(value: str) -> str:
-    if not value:
-        return ""
-    tail = value[-4:]
-    return "*" * max(0, len(value) - 4) + tail

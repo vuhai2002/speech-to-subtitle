@@ -22,9 +22,9 @@ BACKENDS: dict[str, dict] = {
         "needs_gpu_for_srt": True,
         "video_ok": True,
         "fields": [
-            {"key": "ROUTER_BASE_URL", "label": "Base URL", "secret": False},
-            {"key": "ROUTER_API_KEY", "label": "API key", "secret": True},
-            {"key": "TRANSCRIBE_MODEL", "label": "Model", "secret": False},
+            {"key": "ROUTER_BASE_URL", "label": "Base URL", "secret": False, "placeholder": "https://<router-host>/v1"},
+            {"key": "ROUTER_API_KEY", "label": "API key", "secret": True, "placeholder": "sk-..."},
+            {"key": "TRANSCRIBE_MODEL", "label": "Model", "secret": False, "placeholder": "ag/gemini-3.8-flash"},
         ],
     },
     "mai": {
@@ -33,9 +33,9 @@ BACKENDS: dict[str, dict] = {
         "needs_gpu_for_srt": False,
         "video_ok": True,
         "fields": [
-            {"key": "OPENROUTER_API_KEY", "label": "OpenRouter API key", "secret": True},
-            {"key": "MAI_MODEL", "label": "Model", "secret": False},
-            {"key": "MAI_LANGUAGE", "label": "Language", "secret": False},
+            {"key": "OPENROUTER_API_KEY", "label": "OpenRouter API key", "secret": True, "placeholder": "sk-or-v1-..."},
+            {"key": "MAI_MODEL", "label": "Model", "secret": False, "placeholder": "microsoft/mai-transcribe-2"},
+            {"key": "MAI_LANGUAGE", "label": "Language", "secret": False, "placeholder": "vi"},
         ],
     },
     "vertex": {
@@ -44,11 +44,11 @@ BACKENDS: dict[str, dict] = {
         "needs_gpu_for_srt": True,
         "video_ok": False,
         "fields": [
-            {"key": "GOOGLE_CLOUD_PROJECT", "label": "Project ID", "secret": False},
-            {"key": "GOOGLE_CLOUD_LOCATION", "label": "Location", "secret": False},
-            {"key": "GCS_BUCKET_NAME", "label": "GCS bucket", "secret": False},
-            {"key": "GOOGLE_APPLICATION_CREDENTIALS", "label": "Service account key path", "secret": False},
-            {"key": "GEMINI_MODEL", "label": "Model", "secret": False},
+            {"key": "GOOGLE_CLOUD_PROJECT", "label": "Project ID", "secret": False, "placeholder": "my-gcp-project"},
+            {"key": "GOOGLE_CLOUD_LOCATION", "label": "Location", "secret": False, "placeholder": "us-central1"},
+            {"key": "GCS_BUCKET_NAME", "label": "GCS bucket", "secret": False, "placeholder": "my-bucket"},
+            {"key": "GOOGLE_APPLICATION_CREDENTIALS", "label": "Service account key path", "secret": False, "placeholder": "./service-account-key.json"},
+            {"key": "GEMINI_MODEL", "label": "Model", "secret": False, "placeholder": "gemini-2.5-pro"},
         ],
     },
 }
@@ -118,25 +118,63 @@ def gpu_name() -> str:
         return ""
 
 
-def test_backend(backend: str, values: dict) -> tuple[bool, str]:
-    """Light auth/connectivity probe. Returns (ok, message). Network call - not unit tested."""
+def _probe_get(url: str, api_key: str, timeout: int = 20) -> tuple[int, str]:
+    """GET `url` with a Bearer token and return (status_code, short_message).
+    urllib raises HTTPError for 4xx/5xx, so translate that to its status code
+    instead of an exception; any transport failure (DNS, TLS, timeout, bad URL)
+    returns status 0 with the error text. Network call - not unit tested."""
+    import urllib.error
+    import urllib.request
+    req = urllib.request.Request(url, headers={"Authorization": "Bearer " + api_key})
     try:
-        if backend == "mai":
-            import urllib.request
-            req = urllib.request.Request("https://openrouter.ai/api/v1/models",
-                                         headers={"Authorization": "Bearer " + values.get("OPENROUTER_API_KEY", "")})
-            with urllib.request.urlopen(req, timeout=20) as r:
-                return (r.status == 200, f"HTTP {r.status}")
-        if backend == "router":
-            import urllib.request
-            base = values.get("ROUTER_BASE_URL", "").rstrip("/")
-            req = urllib.request.Request(base + "/models",
-                                         headers={"Authorization": "Bearer " + values.get("ROUTER_API_KEY", "")})
-            with urllib.request.urlopen(req, timeout=20) as r:
-                return (r.status == 200, f"HTTP {r.status}")
-        if backend == "vertex":
-            key = values.get("GOOGLE_APPLICATION_CREDENTIALS", "")
-            return (bool(key) and Path(key).exists(), "credentials file found" if key else "no credentials path")
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return (r.status, f"HTTP {r.status}")
+    except urllib.error.HTTPError as e:
+        return (e.code, f"HTTP {e.code}")
     except Exception as e:                                # noqa: BLE001
-        return (False, str(e)[:200])
+        return (0, str(e)[:160])
+
+
+def _classify_probe(backend: str, status: int, message: str) -> tuple[bool, str]:
+    """Map an auth-probe status to (ok, human message). Pure - unit tested.
+
+    401 means the key was rejected. A 403 from the Router means the key WAS
+    accepted but the server forbids listing models (9router does this); the key
+    still works for transcription, so treat it as success with a note. Status 0
+    is a transport error (the message carries the detail)."""
+    if 200 <= status < 300:
+        return (True, "Key accepted.")
+    if status == 401:
+        return (False, "Invalid API key (HTTP 401).")
+    if status == 403 and backend == "router":
+        return (True, "Key accepted (this server does not allow listing models, but transcription works).")
+    if status == 0:
+        return (False, "Could not reach the server: " + message)
+    return (False, f"Unexpected response ({message}).")
+
+
+def probe_backend(backend: str, values: dict) -> tuple[bool, str]:
+    """Light auth/connectivity probe. Returns (ok, message).
+
+    MAI/Router probe an auth-required endpoint so an invalid key actually fails
+    (OpenRouter's /models is public, so it must not be used to verify a key).
+    Vertex only checks that the service-account file exists (verifying it needs
+    the Google libs, which this environment does not carry)."""
+    if backend == "mai":
+        key = values.get("OPENROUTER_API_KEY", "")
+        if not key:
+            return (False, "No API key set.")
+        # /api/v1/key requires auth (401 without a valid key); /models is public.
+        return _classify_probe(backend, *_probe_get("https://openrouter.ai/api/v1/key", key))
+    if backend == "router":
+        base = values.get("ROUTER_BASE_URL", "").rstrip("/")
+        key = values.get("ROUTER_API_KEY", "")
+        if not base:
+            return (False, "No Base URL set.")
+        if not key:
+            return (False, "No API key set.")
+        return _classify_probe(backend, *_probe_get(base + "/models", key))
+    if backend == "vertex":
+        key = values.get("GOOGLE_APPLICATION_CREDENTIALS", "")
+        return (bool(key) and Path(key).exists(), "credentials file found" if key else "no credentials path")
     return (False, "unknown backend")

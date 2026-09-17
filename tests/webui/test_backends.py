@@ -1,5 +1,6 @@
 import sys
-from webui.backends import BACKENDS, output_allowed, build_steps, Step, gpu_name
+from webui.backends import (BACKENDS, output_allowed, build_steps, Step, gpu_name,
+                            _classify_probe, probe_backend)
 
 
 def test_registry_shape():
@@ -36,3 +37,32 @@ def test_build_steps_router_txt_with_prompt():
 
 def test_gpu_name_returns_str():
     assert isinstance(gpu_name(), str)
+
+
+def test_classify_probe_success_and_bad_key():
+    assert _classify_probe("router", 200, "HTTP 200")[0] is True
+    assert _classify_probe("mai", 204, "HTTP 204")[0] is True
+    # 401 is a rejected key for every backend.
+    assert _classify_probe("router", 401, "HTTP 401")[0] is False
+    assert _classify_probe("mai", 401, "HTTP 401")[0] is False
+
+
+def test_classify_probe_router_403_is_accepted():
+    # 9router authenticates the key but forbids listing models -> still valid.
+    ok, msg = _classify_probe("router", 403, "HTTP 403")
+    assert ok is True and "transcription" in msg
+    # For other backends a 403 is not a known "auth ok" case.
+    assert _classify_probe("mai", 403, "HTTP 403")[0] is False
+
+
+def test_classify_probe_transport_error():
+    ok, msg = _classify_probe("router", 0, "getaddrinfo failed")
+    assert ok is False and "getaddrinfo failed" in msg
+
+
+def test_probe_backend_requires_key_without_network():
+    # Missing credentials must fail fast, before any network call.
+    assert probe_backend("mai", {}) == (False, "No API key set.")
+    assert probe_backend("router", {"ROUTER_API_KEY": "k"}) == (False, "No Base URL set.")
+    assert probe_backend("router", {"ROUTER_BASE_URL": "https://x/v1"}) == (False, "No API key set.")
+    assert probe_backend("nope", {}) == (False, "unknown backend")

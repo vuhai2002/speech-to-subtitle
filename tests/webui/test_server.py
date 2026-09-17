@@ -30,9 +30,9 @@ def test_settings_roundtrip(tmp_path):
     c.post("/api/settings", json={"MAI_MODEL": "microsoft/mai-transcribe-2"})
     r = c.get("/api/settings")
     assert r.json()["values"]["MAI_MODEL"] == "microsoft/mai-transcribe-2"
-    # secrets are masked in the GET
-    assert r.json()["values"]["OPENROUTER_API_KEY"].endswith("test")
-    assert "*" in r.json()["values"]["OPENROUTER_API_KEY"]
+    # Saved values (secrets included) are returned in full so the form can load them into the
+    # fields; the UI masks the key in a password field, not the server.
+    assert r.json()["values"]["OPENROUTER_API_KEY"] == "sk-test"
 
 
 def test_download_and_traversal(tmp_path):
