@@ -40,6 +40,20 @@ def speech_in(segs: list[list[float]], a: float, b: float) -> float:
     return sum(max(0.0, min(e, b) - max(s, a)) for s, e in segs)
 
 
+def chunk_has_speech(chunk: dict) -> bool:
+    """True if a chunk holds real speech and should be transcribed/merged; False if it is
+    (near-)silence where the model would likely hallucinate.
+
+    A chunk qualifies when it has at least MIN_SPEECH_CHUNK_SEC of detected speech, OR when
+    speech fills at least MIN_SPEECH_RATIO of its own length. The ratio keeps short clips: a
+    42s chunk with 28s of speech is 67% speech - clearly real - even though 28s is under the
+    absolute floor that is meant for near-silent 10-minute chunks. Shared by both transcribe
+    paths (chunked_transcribe and mai_transcribe) so they agree on what counts as speech."""
+    speech = chunk.get("speech_sec", 0.0)
+    length = max(1e-9, chunk["end"] - chunk["start"])
+    return speech >= config.MIN_SPEECH_CHUNK_SEC or (speech / length) >= config.MIN_SPEECH_RATIO
+
+
 def build_plan(mono16k_path: str, dur: float, segs: list[list[float]]) -> list[dict]:
     """Split into ~CHUNK_TARGET_SEC chunks, cutting at the LONGEST SILENCE near the target mark.
 

@@ -22,7 +22,6 @@ from datetime import datetime
 from pathlib import Path
 
 from transcribe.chunked_transcribe import audio_utils
-from transcribe.chunked_transcribe import config as ct_config
 
 from . import config, transcribe_client
 
@@ -36,7 +35,7 @@ def _process_chunk(c: dict, out: Path, mono: str, log_lock: threading.Lock) -> d
     k = c["idx"]
     mp3 = str(out / "chunks" / f"{k:02d}.mp3")
     audio_utils.cut_chunk(mono, c["start"], c["end"], mp3)
-    expect_speech = c["speech_sec"] >= ct_config.MIN_SPEECH_CHUNK_SEC
+    expect_speech = audio_utils.chunk_has_speech(c)
     r = transcribe_client.transcribe_with_retry(mp3, str(out / "chunks" / f"{k:02d}.json"), expect_speech)
     res = r["res"]
     text = res.get("text", "")

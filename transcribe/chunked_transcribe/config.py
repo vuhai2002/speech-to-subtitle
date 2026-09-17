@@ -28,7 +28,8 @@ MIN_CHUNK_SEC = 300.0           # two consecutive cut points are at least this f
 CONCURRENCY = int(os.getenv("ROUTER_WORKERS", "3"))
 MAX_ATTEMPTS = 3                # retries per chunk on error/empty/finish!=stop/low density
 RETRY_BACKOFF_SEC = 8.0         # pause between retries (gentle on rate limits)
-MIN_SPEECH_CHUNK_SEC = 30.0     # chunk with less speech than this -> not merged (avoids hallucinating over music/silence)
+MIN_SPEECH_CHUNK_SEC = 30.0     # a chunk with less speech than this MAY be dropped (avoids hallucinating over music/silence)
+MIN_SPEECH_RATIO = 0.5          # ...unless speech fills at least this fraction of the chunk (keeps short, speech-dominated clips)
 MIN_WORDS_PER_SPEECH_MIN = 60.0 # lower word density -> treated as an error, retry (catches a status message instead of a transcript)
 
 # --- self-check (quality_check, pure code, grounded in the audio) ---

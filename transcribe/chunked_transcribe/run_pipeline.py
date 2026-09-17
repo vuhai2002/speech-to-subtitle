@@ -41,7 +41,9 @@ def _process_chunk(c: dict, out: Path, mono: str, prompt: str, log_lock: threadi
            "included": False, "locked": r["locked"], "note": "; ".join(r["reasons"])}
     if r["locked"]:
         rec["note"] = "403 account locked - not transcribed"
-    elif c["speech_sec"] < config.MIN_SPEECH_CHUNK_SEC:
+    elif r["reasons"]:                               # failed after all retries (error / empty / unreachable) -> do not merge
+        rec["note"] = "error after retry: " + rec["note"]
+    elif not audio_utils.chunk_has_speech(c):
         rec["note"] = ("fabricated (chunk has no speech but returned words)" if words > 20 else "skipped (no speech)")
     else:
         rec["included"] = True
@@ -79,6 +81,7 @@ def run(input_path: str, out_dir: str, prompt_file: str | None = None) -> dict:
 
     manifest = [results[c["idx"]] for c in plan]
     locked = [m["idx"] for m in manifest if m.get("locked")]
+    failed = [m["idx"] for m in manifest if m["note"].startswith("error after retry")]
     included = [(m, (out / "chunks" / f"{m['idx']:02d}.txt").read_text(encoding="utf-8").strip())
                 for m in manifest if m["included"]]
     (out / "raw_transcript.txt").write_text("\n".join(t for _, t in included), encoding="utf-8")
@@ -87,9 +90,11 @@ def run(input_path: str, out_dir: str, prompt_file: str | None = None) -> dict:
     if locked:
         print(f"{_now()} [4/4] INCOMPLETE: {len(locked)} chunks hit 403 (account locked): {locked}. "
               f"Wait for quota then re-run.", flush=True)
+    if failed:
+        print(f"{_now()} [4/4] INCOMPLETE: {len(failed)} chunks failed after retry: {failed}. Re-run.", flush=True)
     print(f"{_now()} [4/4] done: {len(included)}/{len(plan)} chunks merged | {total_words} words -> raw_transcript.txt", flush=True)
     return {"out_dir": str(out), "chunks": len(plan), "included": len(included), "words": total_words,
-            "dur": dur, "locked": locked}
+            "dur": dur, "locked": locked, "failed": failed}
 
 
 def main():
