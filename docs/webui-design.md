@@ -10,7 +10,7 @@ Give a friendly local front door to the two-step pipeline (transcribe -> align) 
 
 In scope:
 
-- Runner: pick a local audio file (or a folder and select files), choose a backend, choose output (`.srt` or `.txt`), run, watch live progress, download results.
+- Runner: pick a local audio file (drag-and-drop upload, or pick from a folder on the machine), choose a backend, choose output (`.srt` or `.txt`), run, watch live progress, preview and download results.
 - Per-backend settings with API key / credential entry and a Test button.
 - Editable transcription-prompt override for the Gemini backends.
 - Jobs view with live progress and run history.
@@ -19,7 +19,6 @@ Out of scope for now:
 
 - Subtitle editor / cue editing.
 - Hosted or multi-user service, authentication.
-- Drag-and-drop upload (later; the first version selects server-side paths, since the audio is on the same machine as the server).
 
 ## Principles
 
@@ -31,7 +30,7 @@ Out of scope for now:
 
 ## Architecture
 
-An application shell: a left sidebar for navigation, a top bar for global status (active backend, GPU), and a content area that swaps between views. It is a single static page served by a small FastAPI server.
+An application shell: a left sidebar for navigation, a top bar for global status (GPU) and the theme toggle, and a content area that swaps between views. It is a single static page served by a small FastAPI server.
 
 Package layout (each file < 200 lines):
 
@@ -42,9 +41,9 @@ webui/
   jobs.py         Job + JobManager: run the subprocess chain in a thread, capture stdout, stream via SSE, stop, persist history
   backends.py     Registry: (backend, output) -> subprocess step chain; test() probes; GPU detection
   settings.py     Load/save config (keys, defaults) to .env; return current values
-  static/index.html   app shell (sidebar + top bar + the three views)
+  static/index.html   app shell (sidebar + top bar + the four views)
   static/app.js       vanilla JS: view routing, forms, SSE client, Test buttons
-  static/style.css    modern dark theme matching the project banner
+  static/style.css    light/dark theme matching the project banner
   README.md
 ```
 
@@ -58,15 +57,19 @@ The UI does not import the pipeline modules and mutate their config in-process. 
 
 ### Run (default)
 
-Pick a source (a file, or a folder then select files; server-side listing). Choose a backend that is already configured in Settings (shown with a "configured / Test OK" chip; if not configured, link to Settings). Choose output (`.srt` or `.txt`), gated by GPU (see the matrix). Optionally expand and edit the prompt override (per run). Press Run to create a job and jump to the Jobs view.
+Pick a source: drag-and-drop (or click) to upload a file, or expand "pick from a folder on this machine" to select a server-side path without copying (good for very large files). Choose a backend, with a format hint for the accepted audio/video extensions. Choose output (`.srt` or `.txt`), gated by GPU (see the matrix). Optionally edit the prompt override, which is prefilled with the default (per run). Press Run to create a job and jump to the Jobs view.
 
 ### Jobs
 
-A table of jobs (queued / running / done / failed) with backend, file, time, and quick stats. Selecting a job opens its detail: a stage indicator (prepare -> chunk -> transcribe x/N -> QC -> align -> build srt) derived from the log markers, the live log (SSE), a Stop button, and, when finished, the results (download `.srt`/`.txt`, cue count, mean MMS score, cost, QC flags). The first version runs one job at a time but still records history.
+A table of jobs (status, backend, output, file). Selecting a job opens its detail: a stage indicator derived from the log markers, the live log (SSE), and a Stop button while it runs. When finished, the results appear as file tabs - click a tab to preview that output in the browser (read-only), with Copy and Download for the selected file, and the Stop button is hidden. One job runs at a time, but history is recorded.
 
 ### Settings
 
-This is where keys live, entered once and reused. Three backend cards (Vertex / Router / MAI), each with its fields, a masked API key, a Test button, and Save (persisted to `.env`). General defaults: output directory, default output type, workers, theme.
+This is where keys live, entered once and reused. One tab per backend (Router / MAI / Vertex), each with its fields, a masked API key, a Test button, and Save (persisted to `.env`). The light/dark theme toggle lives in the top bar.
+
+### Docs
+
+An in-app "How to use" page: configure a backend, run a job, watch and download, plus the GPU notes - so the basics are available without leaving the UI.
 
 ## Backend integration
 
@@ -99,7 +102,7 @@ Test buttons: light probes per backend (MAI/Router: a minimal request or a model
 
 ## Dependencies and running
 
-- New dependencies: `fastapi` and `uvicorn`, kept in a separate `requirements-webui.txt` so the core pipeline stays light. SSE uses `StreamingResponse` (no extra dependency). Drag-and-drop upload (needs `python-multipart`) is deferred.
+- New dependencies: `fastapi`, `uvicorn`, and `python-multipart` (drag-and-drop upload), kept in a separate `requirements-webui.txt` so the core pipeline stays light. SSE uses `StreamingResponse` (no extra dependency).
 - Run: `python -m webui` opens `http://127.0.0.1:8000`. No build step; static files are served as-is.
 - Environment: no new keys (reuse the existing ones). Add optional `WEBUI_HOST` / `WEBUI_PORT` to `.env.example`.
 
@@ -124,4 +127,4 @@ Only one, backward-compatible: add an optional `--prompt-file` to `transcribe/ba
 
 ## Future / not now
 
-Drag-and-drop upload, a real job queue with depth > 1, a subtitle editor, and single-executable packaging.
+A real job queue with depth > 1, a subtitle editor, and single-executable packaging.

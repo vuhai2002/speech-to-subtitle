@@ -1,8 +1,8 @@
 # webui
 
 Local browser UI for the pipeline. Pick an audio file, choose a backend, run, watch progress,
-and download `.srt`/`.txt`. It orchestrates the existing CLIs as subprocesses; it does not
-reimplement any pipeline logic. See `docs/webui-design.md`.
+then preview, copy, or download the `.srt`/`.txt`. It orchestrates the existing CLIs as
+subprocesses; it does not reimplement any pipeline logic. See `docs/webui-design.md`.
 
 ## Run
 

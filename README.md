@@ -104,7 +104,7 @@ For the MAI path, subtitles come straight from its native timestamps, no GPU nee
 
 ## Web UI (optional)
 
-A local browser UI wraps the pipeline (pick audio, choose backend, run, download subtitles).
+A local browser UI wraps the pipeline (pick audio, choose backend, run, then preview, copy, or download the subtitles).
 
 **Easiest way - double-click a launcher:**
 
