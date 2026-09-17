@@ -1,9 +1,10 @@
 """FastAPI app: serve the single-page UI and the JSON/SSE APIs. Thin layer over webui.* modules."""
 import json
 import os
+import shutil
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, UploadFile, File
 from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -19,7 +20,8 @@ def create_app(state_dir: str, env_path: str) -> FastAPI:
     app = FastAPI()
     app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")
     jm = JobManager(state_dir)
-    has_gpu = backends.detect_gpu()
+    gpu = backends.gpu_name()
+    has_gpu = bool(gpu)
     # MAI/Router subprocesses read their API keys via os.getenv(...) from the process
     # environment; they do not load .env themselves (unlike the Vertex script). Load the
     # saved values into this process so JobManager's subprocess env (os.environ + step.env)
@@ -32,7 +34,32 @@ def create_app(state_dir: str, env_path: str) -> FastAPI:
 
     @app.get("/api/config")
     def config():
-        return {"backends": backends.BACKENDS, "has_gpu": has_gpu}
+        return {"backends": backends.BACKENDS, "has_gpu": has_gpu, "gpu_name": gpu}
+
+    @app.get("/api/prompt")
+    def prompt():
+        # The default transcription prompt (shared by the Gemini backends) so the Run form can
+        # prefill it, letting the user edit it or leave it as-is. MAI is a pure ASR (no prompt).
+        try:
+            from transcribe.chunked_transcribe.config import load_prompt
+            return {"prompt": load_prompt()}
+        except Exception as e:                       # noqa: BLE001 - never break the UI over the prompt
+            return {"prompt": "", "error": str(e)[:200]}
+
+    @app.post("/api/upload")
+    async def upload(file: UploadFile = File(...)):
+        # Save a picked / dropped file into a local uploads dir and return its absolute path,
+        # which the job then runs on. Browsers never expose the real client path, so for a
+        # picked file we copy the bytes here. `_uploads/` lives under the gitignored state dir.
+        updir = Path(state_dir) / "_uploads"
+        updir.mkdir(parents=True, exist_ok=True)
+        name = Path(file.filename or "audio").name          # basename only, no path segments
+        dest = updir / name
+        if dest.exists():
+            dest = updir / (os.urandom(4).hex() + "_" + name)
+        with open(dest, "wb") as f:
+            shutil.copyfileobj(file.file, f)
+        return {"path": str(dest.resolve()), "name": name}
 
     @app.get("/api/files")
     def files(dir: str):

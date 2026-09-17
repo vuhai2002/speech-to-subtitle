@@ -16,22 +16,11 @@ class Step:
 
 
 BACKENDS: dict[str, dict] = {
-    "vertex": {
-        "label": "Gemini (Vertex AI)",
-        "has_prompt": True,
-        "needs_gpu_for_srt": True,
-        "fields": [
-            {"key": "GOOGLE_CLOUD_PROJECT", "label": "Project ID", "secret": False},
-            {"key": "GOOGLE_CLOUD_LOCATION", "label": "Location", "secret": False},
-            {"key": "GCS_BUCKET_NAME", "label": "GCS bucket", "secret": False},
-            {"key": "GOOGLE_APPLICATION_CREDENTIALS", "label": "Service account key path", "secret": False},
-            {"key": "GEMINI_MODEL", "label": "Model", "secret": False},
-        ],
-    },
     "router": {
         "label": "Router (OpenAI-compatible)",
         "has_prompt": True,
         "needs_gpu_for_srt": True,
+        "video_ok": True,
         "fields": [
             {"key": "ROUTER_BASE_URL", "label": "Base URL", "secret": False},
             {"key": "ROUTER_API_KEY", "label": "API key", "secret": True},
@@ -42,10 +31,24 @@ BACKENDS: dict[str, dict] = {
         "label": "MAI-Transcribe-2 (OpenRouter)",
         "has_prompt": False,
         "needs_gpu_for_srt": False,
+        "video_ok": True,
         "fields": [
             {"key": "OPENROUTER_API_KEY", "label": "OpenRouter API key", "secret": True},
             {"key": "MAI_MODEL", "label": "Model", "secret": False},
             {"key": "MAI_LANGUAGE", "label": "Language", "secret": False},
+        ],
+    },
+    "vertex": {
+        "label": "Gemini (Vertex AI)",
+        "has_prompt": True,
+        "needs_gpu_for_srt": True,
+        "video_ok": False,
+        "fields": [
+            {"key": "GOOGLE_CLOUD_PROJECT", "label": "Project ID", "secret": False},
+            {"key": "GOOGLE_CLOUD_LOCATION", "label": "Location", "secret": False},
+            {"key": "GCS_BUCKET_NAME", "label": "GCS bucket", "secret": False},
+            {"key": "GOOGLE_APPLICATION_CREDENTIALS", "label": "Service account key path", "secret": False},
+            {"key": "GEMINI_MODEL", "label": "Model", "secret": False},
         ],
     },
 }
@@ -104,13 +107,15 @@ def _vertex_steps(output, input_path, out_dir, model, prompt_file) -> list[Step]
 import subprocess
 
 
-def detect_gpu() -> bool:
+def gpu_name() -> str:
+    """Return the CUDA device name (e.g. 'NVIDIA GeForce RTX 3050 Ti'), or '' if no GPU.
+    Runs torch in a subprocess so the web server itself never imports torch."""
+    code = "import torch;print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else '')"
     try:
-        out = subprocess.run([sys.executable, "-c", "import torch;print(torch.cuda.is_available())"],
-                             capture_output=True, text=True, timeout=60)
-        return out.stdout.strip() == "True"
+        out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=60)
+        return out.stdout.strip()
     except Exception:
-        return False
+        return ""
 
 
 def test_backend(backend: str, values: dict) -> tuple[bool, str]:

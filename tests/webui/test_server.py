@@ -61,6 +61,16 @@ def test_download_and_traversal(tmp_path):
     assert missing_job_events.status_code == 404
 
 
+def test_upload_saves_file(tmp_path):
+    c = _client(tmp_path)
+    r = c.post("/api/upload", files={"file": ("clip.wav", b"RIFFdata", "audio/wav")})
+    assert r.status_code == 200
+    d = r.json()
+    assert d["name"] == "clip.wav"
+    assert Path(d["path"]).is_file()
+    assert Path(d["path"]).read_bytes() == b"RIFFdata"
+
+
 def test_env_loaded_into_process(tmp_path):
     # MAI/Router subprocesses read their keys via os.getenv(...) from the process
     # environment, not from .env directly. create_app must load .env into os.environ so a

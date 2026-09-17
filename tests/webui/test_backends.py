@@ -1,5 +1,5 @@
 import sys
-from webui.backends import BACKENDS, output_allowed, build_steps, Step, detect_gpu
+from webui.backends import BACKENDS, output_allowed, build_steps, Step, gpu_name
 
 
 def test_registry_shape():
@@ -34,5 +34,5 @@ def test_build_steps_router_txt_with_prompt():
     assert steps[0].argv[steps[0].argv.index("--prompt-file") + 1] == "/tmp/p.txt"
 
 
-def test_detect_gpu_returns_bool():
-    assert isinstance(detect_gpu(), bool)
+def test_gpu_name_returns_str():
+    assert isinstance(gpu_name(), str)

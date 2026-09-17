@@ -8,19 +8,23 @@
 <body>
   <header class="topbar">
     <div class="brand">speech-to-subtitle</div>
-    <div class="status"><span id="gpu" class="badge">GPU: ...</span></div>
+    <div class="status">
+      <button id="theme" class="icon-btn" title="Toggle light / dark">*</button>
+      <span id="gpu" class="badge">GPU: ...</span>
+    </div>
   </header>
   <div class="shell">
     <nav class="sidebar">
       <button data-view="run" class="nav active">Run</button>
       <button data-view="jobs" class="nav">Jobs</button>
       <button data-view="settings" class="nav">Settings</button>
-      <a class="nav" href="https://github.com/vuhai2002/speech-to-subtitle" target="_blank">Docs</a>
+      <button data-view="docs" class="nav">Docs</button>
     </nav>
     <main class="content">
       <section id="view-run" class="view"></section>
       <section id="view-jobs" class="view hidden"></section>
       <section id="view-settings" class="view hidden"></section>
+      <section id="view-docs" class="view hidden"></section>
     </main>
   </div>
   <script src="/static/app.js"></script>
