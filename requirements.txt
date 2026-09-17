@@ -1,0 +1,13 @@
+# Core runtime for the pipeline (transcribe + realign), CPU-friendly defaults.
+# The Web UI itself only needs requirements-webui.txt; these add what a job needs to run
+# (audio decoding, VAD, forced alignment). ffmpeg must also be installed and on PATH.
+#
+# For GPU-accelerated MMS alignment (Router/Vertex -> .srt), reinstall torch + torchaudio
+# with a CUDA build after this, e.g.:
+#   pip install torch==2.5.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cu121
+numpy
+soundfile
+silero-vad
+torch
+torchaudio
+uroman

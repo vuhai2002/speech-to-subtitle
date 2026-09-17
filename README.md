@@ -104,12 +104,22 @@ For the MAI path, subtitles come straight from its native timestamps, no GPU nee
 
 ## Web UI (optional)
 
-A local browser UI wraps the pipeline (pick audio, choose backend, run, download subtitles):
+A local browser UI wraps the pipeline (pick audio, choose backend, run, download subtitles).
 
-    pip install -r requirements-webui.txt
-    python -m webui
+**Easiest way - double-click a launcher:**
 
-It runs on 127.0.0.1 only. See `webui/README.md` and `docs/webui-design.md`.
+- Windows: double-click `run-webui.bat`
+- macOS / Linux: run `./run-webui.sh` (or `bash run-webui.sh`)
+
+The first run creates a local `.venv`, installs everything, and opens `http://127.0.0.1:8000`. It runs on `127.0.0.1` only. `ffmpeg` must be installed and on PATH. GPU-accelerated `.srt` alignment (Router / Vertex) needs a CUDA build of torch - see the note in `requirements.txt`.
+
+**Manual way:**
+
+    python -m venv .venv
+    .venv/Scripts/python -m pip install -r requirements.txt -r requirements-webui.txt
+    .venv/Scripts/python -m webui
+
+See `webui/README.md` and `docs/webui-design.md`.
 
 ---
 
