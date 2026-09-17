@@ -2,22 +2,26 @@ const $ = (s, r=document) => r.querySelector(s);
 let CFG = {backends:{}, has_gpu:false, gpu_name:"", defaultPrompt:""};
 let settingsTab = null;
 let selectedSource = null;
+let curJob = {id: null, files: []};
 
 async function boot(){
   CFG = await (await fetch('/api/config')).json();
   try { CFG.defaultPrompt = (await (await fetch('/api/prompt')).json()).prompt || ''; } catch(e){ CFG.defaultPrompt = ''; }
   $('#gpu').textContent = CFG.gpu_name ? 'GPU: ' + CFG.gpu_name : 'GPU: none (MAI only for .srt)';
+  $('#gpu').title = $('#gpu').textContent;   // full name on hover when the badge truncates on narrow screens
   initTheme();
   $('#theme').onclick = () => applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
   document.querySelectorAll('.nav[data-view]').forEach(b => b.onclick = () => show(b.dataset.view));
   renderRun(); renderSettings(); renderDocs(); show('run');
 }
 
+const ICON_SUN = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
+const ICON_MOON = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>';
 function initTheme(){ applyTheme(localStorage.getItem('theme') || 'dark'); }
 function applyTheme(t){
   document.documentElement.dataset.theme = t;
   try { localStorage.setItem('theme', t); } catch(e){}
-  $('#theme').textContent = t === 'dark' ? '\u2600' : '\u263D';   // show the mode you switch TO
+  $('#theme').innerHTML = t === 'dark' ? ICON_SUN : ICON_MOON;   // show the mode you switch TO
   $('#theme').title = t === 'dark' ? 'Switch to light' : 'Switch to dark';
 }
 
@@ -117,8 +121,8 @@ async function renderJobs(){
       <td><span class="chip ${j.status==='done'?'ok':''}">${j.status}</span></td>
       <td>${j.backend}</td><td>${j.output}</td><td>${(j.source||'').split(/[\\/]/).pop()}</td></tr>`).join('')
     : `<tr><td colspan="4" class="muted">No jobs yet. Start one from the Run tab.</td></tr>`;
-  $('#view-jobs').innerHTML = `<h2>Jobs</h2><div class="card"><table><thead><tr>
-    <th>Status</th><th>Backend</th><th>Output</th><th>File</th></tr></thead><tbody>${rows}</tbody></table></div>
+  $('#view-jobs').innerHTML = `<h2>Jobs</h2><div class="card"><div class="tablewrap"><table><thead><tr>
+    <th>Status</th><th>Backend</th><th>Output</th><th>File</th></tr></thead><tbody>${rows}</tbody></table></div></div>
     <div id="jobDetail"></div>`;
 }
 
@@ -126,7 +130,7 @@ function openJob(id){
   const detail = $('#jobDetail');
   if(!detail) return;
   detail.innerHTML = `<div class="card"><div class="row" style="justify-content:space-between">
-    <div id="jstage" class="muted">stage: ...</div><button class="btn stop" onclick="stopJob('${id}')">Stop</button></div>
+    <div id="jstage" class="muted">stage: ...</div><button id="stopBtn" class="btn stop" onclick="stopJob('${id}')">Stop</button></div>
     <div id="results" style="margin:12px 0"></div><div class="log" id="log"></div></div>`;
   const es = new EventSource('/api/jobs/'+id+'/events');
   const log = $('#log');
@@ -140,10 +144,40 @@ function openJob(id){
 }
 
 function showResults(id, j){
+  const stop = $('#stopBtn'); if(stop) stop.style.display = 'none';   // job is finished; nothing to stop
   const files = (j.results && j.results.files) || [];
-  $('#results').innerHTML = files.length
-    ? files.map(f => `<a class="btn ghost" href="/api/jobs/${id}/download?name=${encodeURIComponent(f)}">Download ${f.split('/').pop()}</a>`).join(' ')
-    : '<span class="muted">No output files.</span>';
+  curJob = {id, files};
+  if(!files.length){ $('#results').innerHTML = '<span class="muted">No output files.</span>'; return; }
+  const tabs = files.map((f, i) => `<button class="tab" data-ri="${i}" onclick="viewFile(${i})">${f.split('/').pop()}</button>`).join('');
+  $('#results').innerHTML = `<div class="row" style="justify-content:space-between;align-items:flex-end;gap:12px">
+      <div class="tabs" style="margin-bottom:0">${tabs}</div>
+      <div class="row" style="gap:8px">
+        <button id="copyBtn" class="btn ghost sm" onclick="copyPreview()">Copy</button>
+        <a id="dlBtn" class="btn ghost sm" href="#" download>Download</a>
+      </div>
+    </div><pre id="preview" class="preview"></pre>`;
+  viewFile(0);                                 // preview the first output automatically
+}
+async function copyPreview(){
+  const pre = $('#preview'); const btn = $('#copyBtn'); if(!pre) return;
+  try { await navigator.clipboard.writeText(pre.textContent); }
+  catch(e){                                    // fallback when the clipboard API is unavailable
+    const r = document.createRange(); r.selectNode(pre);
+    const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+    try { document.execCommand('copy'); } catch(_){}
+    sel.removeAllRanges();
+  }
+  if(btn){ btn.textContent = 'Copied'; setTimeout(() => { btn.textContent = 'Copy'; }, 1200); }
+}
+async function viewFile(i){
+  const f = curJob.files[i]; if(f === undefined) return;
+  document.querySelectorAll('#results .tab').forEach(t => t.classList.toggle('active', Number(t.dataset.ri) === i));
+  const url = '/api/jobs/' + curJob.id + '/download?name=' + encodeURIComponent(f);
+  const dl = $('#dlBtn'); if(dl) dl.href = url;
+  const pre = $('#preview'); if(!pre) return;
+  pre.textContent = 'Loading ' + f.split('/').pop() + ' ...';
+  try { const r = await fetch(url); pre.textContent = await r.text(); }
+  catch(e){ pre.textContent = '(could not load ' + f + ')'; }
 }
 async function stopJob(id){ await fetch('/api/jobs/'+id+'/stop',{method:'POST'}); }
 
@@ -196,7 +230,7 @@ function renderDocs(){
       </ol>
       <h3>2. Run a job (Run tab)</h3>
       <ol>
-        <li>Type the folder that holds your audio and click <b>List</b>, then pick a file.</li>
+        <li>Drag an audio or video file onto the drop zone (or click to choose). For a very large file, expand <b>"pick from a folder"</b> and select it in place - no copy.</li>
         <li>Choose the backend and the output: <code>.srt</code> (timed subtitles) or <code>.txt</code> (transcript only).</li>
         <li>Optional: edit the prompt sent to the model. Leave it as the default if unsure.</li>
         <li>Click <b>Run</b>.</li>
