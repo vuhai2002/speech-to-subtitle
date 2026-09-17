@@ -84,3 +84,46 @@ def test_failing_step_marks_error(tmp_path):
             break
         time.sleep(0.05)
     assert jm.get(job.id).status == "error"
+
+
+def test_delete_removes_job_and_files(tmp_path):
+    jm = JobManager(str(tmp_path))
+    out_dir = tmp_path / "job1"
+    (out_dir / "chunks").mkdir(parents=True)
+    (out_dir / "raw_transcript.txt").write_text("hi\n", encoding="utf-8")
+    jm._jobs["job1"] = Job(id="job1", backend="mai", output="txt", source="a.m4a",
+                           out_dir=str(out_dir), status="done")
+    jm._save()
+
+    ok, msg = jm.delete("job1")
+    assert ok and msg == "deleted"
+    assert not out_dir.exists()                       # files removed from disk
+    assert jm.get("job1") is None
+    assert not any(x.id == "job1" for x in JobManager(str(tmp_path)).list())  # persisted
+
+
+def test_delete_refuses_running_job(tmp_path):
+    jm = JobManager(str(tmp_path))
+    jm._jobs["r1"] = Job(id="r1", backend="mai", output="txt", source="a.m4a",
+                         out_dir=str(tmp_path / "r1"), status="running")
+    ok, msg = jm.delete("r1")
+    assert ok is False and "running" in msg
+    assert jm.get("r1") is not None                   # still there
+
+
+def test_delete_missing_job(tmp_path):
+    assert JobManager(str(tmp_path)).delete("nope") == (False, "not found")
+
+
+def test_delete_keeps_files_outside_state_dir(tmp_path):
+    # A tampered history whose out_dir points outside the state dir must not delete that folder.
+    jm = JobManager(str(tmp_path / "state"))
+    outside = tmp_path / "important"
+    outside.mkdir()
+    (outside / "keep.txt").write_text("do not delete\n", encoding="utf-8")
+    jm._jobs["x"] = Job(id="x", backend="mai", output="txt", source="a.m4a",
+                        out_dir=str(outside), status="done")
+    ok, _ = jm.delete("x")
+    assert ok is True                                 # entry removed
+    assert jm.get("x") is None
+    assert (outside / "keep.txt").exists()            # external files untouched

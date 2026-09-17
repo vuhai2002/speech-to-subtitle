@@ -19,6 +19,7 @@ const ICON_SUN = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" st
 const ICON_MOON = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>';
 const ICON_EYE = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>';
 const ICON_EYE_OFF = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.9 4.24A9.1 9.1 0 0 1 12 4c6.5 0 10 7 10 7a13.2 13.2 0 0 1-1.67 2.68M6.6 6.6A13.5 13.5 0 0 0 2 12s3.5 7 10 7a9.7 9.7 0 0 0 5.4-1.6"/><path d="M1 1l22 22"/></svg>';
+const ICON_TRASH = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m2 0v14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V6"/><path d="M10 11v6M14 11v6"/></svg>';
 function initTheme(){ applyTheme(localStorage.getItem('theme') || 'dark'); }
 function applyTheme(t){
   document.documentElement.dataset.theme = t;
@@ -119,13 +120,26 @@ async function startJob(){
 
 async function renderJobs(){
   const {jobs} = await (await fetch('/api/jobs')).json();
-  const rows = jobs.length ? jobs.map(j => `<tr onclick="openJob('${j.id}')" style="cursor:pointer">
+  const rows = jobs.length ? jobs.map(j => {
+    const canDelete = !['queued','running'].includes(j.status);   // never delete a job that is still writing
+    const del = canDelete ? `<button class="icon-btn sm danger" title="Delete job" aria-label="Delete job" onclick="deleteJob('${j.id}', event)">${ICON_TRASH}</button>` : '';
+    return `<tr onclick="openJob('${j.id}')" style="cursor:pointer">
       <td><span class="chip ${j.status==='done'?'ok':''}">${j.status}</span></td>
-      <td>${j.backend}</td><td>${j.output}</td><td>${(j.source||'').split(/[\\/]/).pop()}</td></tr>`).join('')
-    : `<tr><td colspan="4" class="muted">No jobs yet. Start one from the Run tab.</td></tr>`;
+      <td>${j.backend}</td><td>${j.output}</td><td>${(j.source||'').split(/[\\/]/).pop()}</td>
+      <td class="actions">${del}</td></tr>`;
+  }).join('')
+    : `<tr><td colspan="5" class="muted">No jobs yet. Start one from the Run tab.</td></tr>`;
   $('#view-jobs').innerHTML = `<h2>Jobs</h2><div class="card"><div class="tablewrap"><table><thead><tr>
-    <th>Status</th><th>Backend</th><th>Output</th><th>File</th></tr></thead><tbody>${rows}</tbody></table></div></div>
+    <th>Status</th><th>Backend</th><th>Output</th><th>File</th><th></th></tr></thead><tbody>${rows}</tbody></table></div></div>
     <div id="jobDetail"></div>`;
+}
+async function deleteJob(id, ev){
+  if(ev) ev.stopPropagation();                                    // don't also open the job row
+  if(!confirm('Delete this job and its output files from disk? This cannot be undone.')) return;
+  const r = await fetch('/api/jobs/' + id, {method:'DELETE'});
+  if(!r.ok){ alert((await r.json()).error || 'Could not delete this job.'); return; }
+  if(curJob && curJob.id === id) curJob = {id:null, files:[]};
+  await renderJobs();                                             // rebuilds the table and clears the detail
 }
 
 function openJob(id){

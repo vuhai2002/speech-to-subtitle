@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import os
 import queue
+import shutil
 import subprocess
 import threading
 import time
@@ -99,6 +100,27 @@ class JobManager:
         if p and p.poll() is None:
             self._stopped.add(job_id)        # record intent before terminate() races _run()
             p.terminate()
+
+    def delete(self, job_id: str) -> tuple[bool, str]:
+        """Remove a finished job from history and delete its output folder from disk.
+
+        Refuses while the job is still running (stop it first) so it never races the run
+        thread or deletes a folder a live subprocess is still writing to. The folder is
+        removed only when it is safely inside the state dir, guarding a tampered history
+        whose out_dir points elsewhere."""
+        job = self._jobs.get(job_id)
+        if not job:
+            return (False, "not found")
+        if job.status in ("queued", "running"):
+            return (False, "job is still running; stop it first")
+        root = self.state_dir.resolve()
+        out = Path(job.out_dir).resolve()
+        if out != root and out.is_relative_to(root) and out.is_dir():
+            shutil.rmtree(out, ignore_errors=True)
+        self._jobs.pop(job_id, None)
+        self._subs.pop(job_id, None)
+        self._save()
+        return (True, "deleted")
 
     def _run(self, job: Job, steps: list[Step]) -> None:
         job.status = "running"

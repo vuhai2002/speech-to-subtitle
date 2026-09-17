@@ -117,6 +117,13 @@ def create_app(state_dir: str, env_path: str) -> FastAPI:
         jm.stop(job_id)
         return {"ok": True}
 
+    @app.delete("/api/jobs/{job_id}")
+    def delete_job(job_id: str):
+        ok, msg = jm.delete(job_id)
+        if ok:
+            return {"ok": True}
+        return JSONResponse({"error": msg}, status_code=404 if msg == "not found" else 409)
+
     @app.get("/api/jobs/{job_id}/download")
     def download(job_id: str, name: str):
         j = jm.get(job_id)
