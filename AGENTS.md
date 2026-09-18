@@ -6,6 +6,7 @@ Rules for AI agents working in this repo. Read `README.md` to understand the flo
 
 - The repo generates Vietnamese `.srt` subtitles for a lecture-video streaming platform. It does not write to any database. Importing the output into production happens in a separate downstream system that is not part of this repo.
 - Two steps: `transcribe/` (mp3 -> txt, Gemini Vertex) then `realign/` (txt/srt + mp3 -> srt, MMS forced alignment).
+- A local web UI in `webui/` wraps both steps (start it with `run-webui.bat` / `run-webui.sh`, or `.venv/Scripts/python.exe -m webui`). It orchestrates the existing CLIs as subprocesses and does not reimplement pipeline logic. See `webui/README.md` and `docs/webui-design.md`.
 - The content is Vietnamese lectures. Preserve Vietnamese diacritics in code, comments, and data. Output srt filenames must preserve every character of the original transcript name, because the downstream system matches on the filename during import.
 
 ## Three transcription paths (step 1)
@@ -25,9 +26,9 @@ Rules for AI agents working in this repo. Read `README.md` to understand the flo
 
 ## Environment
 
-- All Python commands for `realign/` and `tests/`: `.venv-realign/Scripts/python.exe` (Python 3.12, torch 2.5.1+cu121 reused from `C:\Python312`). The repo has no other venv.
-- Run modules with `-m` from the repo root, e.g. `.venv-realign/Scripts/python.exe -m realign.run_batch ...`. Calling by file path (`python realign/run_batch.py`) fails with `ModuleNotFoundError: realign`.
-- `transcribe/batch_transcribe_vertex.py` runs separately (usually on a Linux VM), needs `.env` and a service account key, and calls a billed API. `.venv-realign` does not have the Google libraries installed.
+- All Python commands for `realign/`, `tests/`, and the web UI: `.venv/Scripts/python.exe` (Python 3.10-3.13 with a CUDA build of `torch==2.5.1` + `torchaudio==2.5.1`). The `run-webui.bat` / `run-webui.sh` launcher creates it: it picks a compatible Python and installs the CUDA torch when an NVIDIA GPU is present. The tested torch has no wheels for Python 3.14+, so the venv must use 3.10-3.13.
+- Run modules with `-m` from the repo root, e.g. `.venv/Scripts/python.exe -m realign.run_batch ...`. Calling by file path (`python realign/run_batch.py`) fails with `ModuleNotFoundError: realign`.
+- `transcribe/batch_transcribe_vertex.py` runs separately (usually on a Linux VM), needs `.env` and a service account key, and calls a billed API. `.venv` does not have the Google libraries installed.
 
 ## Do not
 
@@ -41,8 +42,8 @@ Rules for AI agents working in this repo. Read `README.md` to understand the flo
 
 ## Testing
 
-- pytest, configured in `pytest.ini` (`pythonpath = .`, `testpaths = tests`).
-- When you change a module, run only its corresponding test file, e.g. `.venv-realign/Scripts/python.exe -m pytest tests/realign/test_cue_builder.py`. Run the full suite only once, before reporting completion.
+- pytest, configured in `pytest.ini` (`pythonpath = .`, `testpaths = tests`). Install the test deps once: `.venv/Scripts/python.exe -m pip install -r requirements-dev.txt` (pytest is not in the app venv by default).
+- When you change a module, run only its corresponding test file, e.g. `.venv/Scripts/python.exe -m pytest tests/realign/test_cue_builder.py`. Run the full suite only once, before reporting completion.
 - Import `torch`, `torchaudio`, `silero_vad` only inside the functions that need them, not at the top of the module. This lets pure-logic tests run without a GPU. `test_window_align.py` is the exception - it needs torch.
 - Verify GPU-dependent parts (align, VAD) with a smoke test on one short file in `test-files/` and `--max-sec`; do not run a full batch.
 

@@ -33,34 +33,34 @@ ROUTER_WORKERS    optional, number of chunks sent in parallel, default 3
 
 Chunks are sent **in parallel** (default 3 workers, change with `--workers` or `ROUTER_WORKERS`). Each chunk **retries up to 3 times** on error, empty response, `finish != stop`, or too-low character density, with a pause between attempts. On a **403** (banned account) that chunk stops without retrying, and the whole file is marked "incomplete" so it can be rerun later (rather than crashing the whole batch).
 
-Run from the repo root via `.venv-realign` (which has torch + silero + MMS, like realign):
+Run from the repo root via `.venv` (which has torch + silero + MMS, like realign):
 
 ```bash
-.venv-realign/Scripts/python.exe -m transcribe.chunked_transcribe.run_pipeline --input "audio.m4a" --out-dir out-ct
+.venv/Scripts/python.exe -m transcribe.chunked_transcribe.run_pipeline --input "audio.m4a" --out-dir out-ct
 ```
 
 ```bash
-.venv-realign/Scripts/python.exe -m transcribe.chunked_transcribe.quality_check --out-dir out-ct
+.venv/Scripts/python.exe -m transcribe.chunked_transcribe.quality_check --out-dir out-ct
 ```
 
 Produce the `.srt` (per-chunk alignment + realign cue grouping, NOT whole-file window_align). Files are named after the original audio:
 
 ```bash
-.venv-realign/Scripts/python.exe -m transcribe.chunked_transcribe.build_srt --out-dir out-ct
+.venv/Scripts/python.exe -m transcribe.chunked_transcribe.build_srt --out-dir out-ct
 ```
 
 Transcribe a second pass (different model), then compare the two passes and export an HTML view:
 
 ```bash
-.venv-realign/Scripts/python.exe -m transcribe.chunked_transcribe.run_pipeline --input "audio.m4a" --out-dir out-ct-pro --model ag/gemini-3.1-pro-low
+.venv/Scripts/python.exe -m transcribe.chunked_transcribe.run_pipeline --input "audio.m4a" --out-dir out-ct-pro --model ag/gemini-3.1-pro-low
 ```
 
 ```bash
-.venv-realign/Scripts/python.exe -m transcribe.chunked_transcribe.compare_passes --a out-ct --b out-ct-pro
+.venv/Scripts/python.exe -m transcribe.chunked_transcribe.compare_passes --a out-ct --b out-ct-pro
 ```
 
 ```bash
-.venv-realign/Scripts/python.exe -m transcribe.chunked_transcribe.render_compare_html --a out-ct --b out-ct-pro --out compare.html --a-name "3.8-flash" --b-name "3.1-pro"
+.venv/Scripts/python.exe -m transcribe.chunked_transcribe.render_compare_html --a out-ct --b out-ct-pro --out compare.html --a-name "3.8-flash" --b-name "3.1-pro"
 ```
 
 ## Output in `--out-dir`

@@ -1,0 +1,5 @@
+# Dev / test dependencies (not needed to run the app or the web UI).
+# Install into the app venv once:
+#   .venv/Scripts/python -m pip install -r requirements-dev.txt   (Windows)
+#   .venv/bin/python     -m pip install -r requirements-dev.txt   (macOS / Linux)
+pytest

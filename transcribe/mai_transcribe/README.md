@@ -23,22 +23,22 @@ MAI_LANGUAGE         optional, default vi
 MAI_WORKERS          optional, number of chunks sent in parallel, default 3
 ```
 
-Transcribe (from the repo root). We reuse `.venv-realign` for convenience, but this step **does not need GPU/torch** - it only needs `ffmpeg` and `silero-vad` for chunking:
+Transcribe (from the repo root). We reuse `.venv` for convenience, but this step **does not need GPU/torch** - it only needs `ffmpeg` and `silero-vad` for chunking:
 
 ```bash
-.venv-realign/Scripts/python.exe -m transcribe.mai_transcribe.run_pipeline --input "audio.m4a" --out-dir out-mai
+.venv/Scripts/python.exe -m transcribe.mai_transcribe.run_pipeline --input "audio.m4a" --out-dir out-mai
 ```
 
 Build the `.srt` from MAI's native timestamps (also GPU-free):
 
 ```bash
-.venv-realign/Scripts/python.exe -m transcribe.mai_transcribe.build_srt --out-dir out-mai
+.venv/Scripts/python.exe -m transcribe.mai_transcribe.build_srt --out-dir out-mai
 ```
 
 To cross-check the text against another transcript (e.g. the Gemini pass), reuse the tooling from `chunked_transcribe`:
 
 ```bash
-.venv-realign/Scripts/python.exe -m transcribe.chunked_transcribe.compare_passes --a out-gemini --b out-mai
+.venv/Scripts/python.exe -m transcribe.chunked_transcribe.compare_passes --a out-gemini --b out-mai
 ```
 
 ## Output in `--out-dir`

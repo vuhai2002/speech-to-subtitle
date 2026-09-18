@@ -111,7 +111,9 @@ A local browser UI wraps the pipeline (pick audio, choose backend, run, then pre
 - Windows: double-click `run-webui.bat`
 - macOS / Linux: run `./run-webui.sh` (or `bash run-webui.sh`)
 
-The first run creates a local `.venv`, installs everything, and opens `http://127.0.0.1:8000`. It runs on `127.0.0.1` only. `ffmpeg` must be installed and on PATH. GPU-accelerated `.srt` alignment (Router / Vertex) needs a CUDA build of torch - see the note in `requirements.txt`.
+The first run creates a local `.venv`, installs everything, and opens `http://127.0.0.1:8000`. If an NVIDIA GPU is detected (`nvidia-smi`), it also installs the CUDA build of torch, so `.srt` alignment (Router / Vertex) is GPU-accelerated; without a GPU it uses the CPU build (MAI still produces `.srt` with no GPU). It runs on `127.0.0.1` only.
+
+Prerequisites: **Python 3.10-3.13** (the tested CUDA torch has no wheels for newer Python such as 3.14; the launcher picks a compatible interpreter automatically if one is installed) and **`ffmpeg`** on PATH.
 
 **Manual way:**
 
@@ -120,6 +122,15 @@ The first run creates a local `.venv`, installs everything, and opens `http://12
     .venv/Scripts/python -m webui
 
 See `webui/README.md` and `docs/webui-design.md`.
+
+### Troubleshooting (Web UI)
+
+- **Top bar shows `GPU: none`, or `.srt` is disabled for Router/Vertex, but the machine has an NVIDIA GPU.** The `.venv` has a CPU-only torch. It happens when the venv was built with a Python that has no CUDA torch wheels (e.g. Python 3.14). Fix: install a Python 3.10-3.13, delete `.venv`, and re-run the launcher - it rebuilds with a compatible Python and installs the CUDA build. MAI still makes `.srt` without a GPU, so this only limits the Router/Vertex `.srt` path.
+- **`ERROR: No matching distribution found for torch==2.5.1` during setup.** Same cause: the venv's Python is too new for the tested CUDA torch (Python 3.10-3.13 only). Install Python 3.12, delete `.venv`, re-run the launcher.
+- **A job fails immediately, or `ffmpeg` is not found.** `ffmpeg` must be installed and on PATH (it decodes the audio). Check with `ffmpeg -version`; install from ffmpeg.org, or `winget install Gyan.FFmpeg` / `brew install ffmpeg` / `apt install ffmpeg`.
+- **Test connection says `Invalid API key (401)`.** The key is wrong - re-enter it in Settings. A Router result of "Key accepted (this server does not allow listing models...)" is **not** an error: the key is valid, the server just blocks model listing.
+- **A job errors with "router unreachable" / a transport error.** The Router (OpenAI-compatible) host is down or unreachable. Check the Base URL in Settings and that the server is up; the job retries and reports the chunk as incomplete if it stays down.
+- **Port 8000 is already in use.** The server automatically uses the next free port and prints the real URL in the console - open that one.
 
 ---
 

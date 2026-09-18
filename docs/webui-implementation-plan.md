@@ -78,7 +78,7 @@ def test_build_steps_router_txt_with_prompt():
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `.venv-realign/Scripts/python.exe -m pytest tests/webui/test_backends.py -v`
+Run: `.venv/Scripts/python.exe -m pytest tests/webui/test_backends.py -v`
 Expected: FAIL (`ModuleNotFoundError: webui`)
 
 - [ ] **Step 3: Write minimal implementation**
@@ -210,7 +210,7 @@ if __name__ == "__main__":
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `.venv-realign/Scripts/python.exe -m pytest tests/webui/test_backends.py -v`
+Run: `.venv/Scripts/python.exe -m pytest tests/webui/test_backends.py -v`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -260,7 +260,7 @@ def test_masked():
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `.venv-realign/Scripts/python.exe -m pytest tests/webui/test_settings.py -v`
+Run: `.venv/Scripts/python.exe -m pytest tests/webui/test_settings.py -v`
 Expected: FAIL (`ModuleNotFoundError: webui.settings`)
 
 - [ ] **Step 3: Write minimal implementation**
@@ -312,7 +312,7 @@ def masked(value: str) -> str:
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `.venv-realign/Scripts/python.exe -m pytest tests/webui/test_settings.py -v`
+Run: `.venv/Scripts/python.exe -m pytest tests/webui/test_settings.py -v`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -352,7 +352,7 @@ def test_markers():
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `.venv-realign/Scripts/python.exe -m pytest tests/webui/test_stages.py -v`
+Run: `.venv/Scripts/python.exe -m pytest tests/webui/test_stages.py -v`
 Expected: FAIL
 
 - [ ] **Step 3: Write minimal implementation**
@@ -383,7 +383,7 @@ def stage_from_line(line: str) -> str | None:
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `.venv-realign/Scripts/python.exe -m pytest tests/webui/test_stages.py -v`
+Run: `.venv/Scripts/python.exe -m pytest tests/webui/test_stages.py -v`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -453,7 +453,7 @@ def test_history_persists(tmp_path):
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `.venv-realign/Scripts/python.exe -m pytest tests/webui/test_jobs.py -v`
+Run: `.venv/Scripts/python.exe -m pytest tests/webui/test_jobs.py -v`
 Expected: FAIL
 
 - [ ] **Step 3: Write minimal implementation**
@@ -593,7 +593,7 @@ class JobManager:
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `.venv-realign/Scripts/python.exe -m pytest tests/webui/test_jobs.py -v`
+Run: `.venv/Scripts/python.exe -m pytest tests/webui/test_jobs.py -v`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -637,7 +637,7 @@ def test_load_prompt_from_file(tmp_path):
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `.venv-realign/Scripts/python.exe -m pytest tests/webui/test_prompt_file.py -v`
+Run: `.venv/Scripts/python.exe -m pytest tests/webui/test_prompt_file.py -v`
 Expected: FAIL (`load_prompt() takes 0 positional arguments`)
 
 - [ ] **Step 3: Write minimal implementation**
@@ -676,11 +676,11 @@ def resolve_prompt(prompt_file):
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `.venv-realign/Scripts/python.exe -m pytest tests/webui/test_prompt_file.py -v`
+Run: `.venv/Scripts/python.exe -m pytest tests/webui/test_prompt_file.py -v`
 Expected: PASS
 
 Also confirm no regression to existing behavior:
-Run: `.venv-realign/Scripts/python.exe -c "import transcribe.chunked_transcribe.run_pipeline, transcribe.batch_transcribe_vertex"`
+Run: `.venv/Scripts/python.exe -c "import transcribe.chunked_transcribe.run_pipeline, transcribe.batch_transcribe_vertex"`
 Expected: no error.
 
 - [ ] **Step 5: Commit**
@@ -715,7 +715,7 @@ def test_detect_gpu_returns_bool():
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `.venv-realign/Scripts/python.exe -m pytest tests/webui/test_backends.py::test_detect_gpu_returns_bool -v`
+Run: `.venv/Scripts/python.exe -m pytest tests/webui/test_backends.py::test_detect_gpu_returns_bool -v`
 Expected: FAIL (`cannot import name 'detect_gpu'`)
 
 - [ ] **Step 3: Write minimal implementation**
@@ -763,7 +763,7 @@ Add `from pathlib import Path` at the top of `backends.py` if not present.
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `.venv-realign/Scripts/python.exe -m pytest tests/webui/test_backends.py -v`
+Run: `.venv/Scripts/python.exe -m pytest tests/webui/test_backends.py -v`
 Expected: PASS (all backend tests)
 
 - [ ] **Step 5: Commit**
@@ -798,7 +798,7 @@ uvicorn>=0.29
 Install into the dev venv:
 
 ```bash
-.venv-realign/Scripts/python.exe -m pip install -r requirements-webui.txt
+.venv/Scripts/python.exe -m pip install -r requirements-webui.txt
 ```
 
 ```python
@@ -838,7 +838,7 @@ def test_settings_roundtrip(tmp_path):
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `.venv-realign/Scripts/python.exe -m pytest tests/webui/test_server.py -v`
+Run: `.venv/Scripts/python.exe -m pytest tests/webui/test_server.py -v`
 Expected: FAIL (`ModuleNotFoundError: webui.server`)
 
 - [ ] **Step 3: Write minimal implementation**
@@ -975,7 +975,7 @@ Add a convenience method to `JobManager` so the server does not build steps itse
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `.venv-realign/Scripts/python.exe -m pytest tests/webui/test_server.py -v`
+Run: `.venv/Scripts/python.exe -m pytest tests/webui/test_server.py -v`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -1015,7 +1015,7 @@ def test_no_open_and_port():
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `.venv-realign/Scripts/python.exe -m pytest tests/webui/test_args.py -v`
+Run: `.venv/Scripts/python.exe -m pytest tests/webui/test_args.py -v`
 Expected: FAIL
 
 - [ ] **Step 3: Write minimal implementation**
@@ -1058,7 +1058,7 @@ if __name__ == "__main__":
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `.venv-realign/Scripts/python.exe -m pytest tests/webui/test_args.py -v`
+Run: `.venv/Scripts/python.exe -m pytest tests/webui/test_args.py -v`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -1271,7 +1271,7 @@ boot();
 
 - [ ] **Step 4: Manual smoke test**
 
-Run: `.venv-realign/Scripts/python.exe -m webui --no-open`
+Run: `.venv/Scripts/python.exe -m webui --no-open`
 Then open `http://127.0.0.1:8000` in a browser and verify: the app shell renders (sidebar + top bar + GPU badge), the three views switch, Settings shows the three backend cards, and entering a folder + List shows audio files. (A full run is exercised in Task 10.)
 
 - [ ] **Step 5: Commit**
@@ -1343,7 +1343,7 @@ It runs on 127.0.0.1 only. See `webui/README.md` and `docs/webui-design.md`.
 
 Run the webui unit tests:
 
-Run: `.venv-realign/Scripts/python.exe -m pytest tests/webui -q`
+Run: `.venv/Scripts/python.exe -m pytest tests/webui -q`
 Expected: all PASS.
 
 End-to-end (uses a real MAI key in `.env`, ~$0.002): start `python -m webui --no-open`, open the browser, Settings -> MAI -> paste key -> Test (expect OK), Run -> pick a short clip -> output `.srt` -> watch the log reach "done" -> Download the `.srt`. Confirm the file opens with correct cues.

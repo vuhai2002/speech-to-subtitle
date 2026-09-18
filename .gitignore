@@ -9,7 +9,7 @@ service-account-key.json
 # Logs (transcribe/batch_transcribe_vertex.py writes a log next to the script)
 *.log
 
-# Virtualenvs (.venv, .venv-realign, .venv311, ...)
+# Virtualenvs (.venv, .venv311, ...)
 .venv*/
 env/
 venv/

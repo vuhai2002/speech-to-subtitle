@@ -9,7 +9,7 @@ Modules:
   render_compare_html  export a side-by-side comparison HTML, highlighting differences
 
 Run from the repo root, e.g.:
-  .venv-realign/Scripts/python.exe -m transcribe.chunked_transcribe.run_pipeline --input <audio> --out-dir <dir>
+  .venv/Scripts/python.exe -m transcribe.chunked_transcribe.run_pipeline --input <audio> --out-dir <dir>
 
 Secrets are read from the environment variables ROUTER_BASE_URL / ROUTER_API_KEY (see config.py).
 """

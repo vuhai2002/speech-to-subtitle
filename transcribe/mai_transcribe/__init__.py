@@ -9,7 +9,7 @@ Modules:
   build_srt      .srt from MAI's native timestamps (no MMS, no GPU)
 
 Run from the repo root, e.g.:
-  .venv-realign/Scripts/python.exe -m transcribe.mai_transcribe.run_pipeline --input <audio> --out-dir <dir>
+  .venv/Scripts/python.exe -m transcribe.mai_transcribe.run_pipeline --input <audio> --out-dir <dir>
 
 Secrets are read from the environment variable OPENROUTER_API_KEY (see config.py). Notes + experimental
 findings: docs/mai-transcribe-notes.md.
