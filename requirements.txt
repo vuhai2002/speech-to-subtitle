@@ -8,6 +8,9 @@
 numpy
 soundfile
 silero-vad
+# silero-vad 6.x imports onnxruntime at package init but does not declare it as a
+# dependency, so the VAD step crashes at runtime without it. Pin it explicitly.
+onnxruntime
 torch
 torchaudio
 uroman
