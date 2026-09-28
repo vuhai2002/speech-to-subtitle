@@ -21,7 +21,10 @@ def transcribe_once(mp3_path: str, raw_path: str) -> dict:
         raise RuntimeError("missing OPENROUTER_API_KEY in the environment")
     hdr_path = raw_path + ".headers"
     if os.path.exists(hdr_path):        # never read the previous attempt's Retry-After
-        os.remove(hdr_path)
+        try:
+            os.remove(hdr_path)
+        except OSError:
+            pass  # e.g. a Windows sharing violation; worst case one stale Retry-After wait
     out = subprocess.run(
         ["curl", "-s", "-m", str(config.HTTP_TIMEOUT_SEC), config.API_URL,
          "-H", "Authorization: Bearer " + config.API_KEY,

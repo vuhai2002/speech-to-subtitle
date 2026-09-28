@@ -40,9 +40,11 @@ def test_wait_never_exceeds_the_cap():
     assert wait_seconds(10, 8.0, "500", None, rand=_mid) == 120.0
 
 
-def test_headers_last_retry_after_wins_across_redirect_blocks(tmp_path):
+def test_headers_last_retry_after_wins_across_1xx_interim_blocks(tmp_path):
+    # curl runs without -L, so a redirect never adds a header block here - the real multi-block
+    # case is a 1xx interim response (e.g. 100 Continue for a request body over 1 MB).
     p = tmp_path / "raw.headers"
-    p.write_text("HTTP/1.1 301 Moved\r\nRetry-After: 5\r\n\r\n"
+    p.write_text("HTTP/1.1 100 Continue\r\nRetry-After: 5\r\n\r\n"
                  "HTTP/2 429\r\nretry-after: 42\r\ncontent-type: application/json\r\n\r\n", encoding="utf-8")
     assert retry_after_from_headers(str(p)) == "42"
 

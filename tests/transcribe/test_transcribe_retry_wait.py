@@ -74,6 +74,33 @@ def test_router_once_drops_a_stale_header_dump(monkeypatch, tmp_path):
     assert res.get("retry_after") is None
 
 
+def _raise_oserror(_path):
+    raise OSError("sharing violation")
+
+
+def test_router_once_survives_a_stale_header_dump_it_cannot_remove(monkeypatch, tmp_path):
+    # Windows sharing violation (AV scanner, a lagging reader) can make os.remove raise on the
+    # previous attempt's header dump. Worst case a stale Retry-After feeds one wait -
+    # transcribe_once must still return a dict, never raise (its documented contract).
+    mp3 = tmp_path / "00.mp3"
+    mp3.write_bytes(b"ID3")
+    raw = tmp_path / "raw.sse"
+    (tmp_path / "raw.sse.headers").write_text("HTTP/2 429\r\nRetry-After: 99\r\n\r\n", encoding="utf-8")
+    monkeypatch.setattr(router.config, "BASE_URL", "https://router.invalid/v1")
+    monkeypatch.setattr(router.config, "API_KEY", "k")
+    monkeypatch.setattr(router.os, "remove", _raise_oserror)
+
+    def fake_run(argv, capture_output, text):
+        with open(argv[argv.index("-o") + 1], "w", encoding="utf-8") as f:
+            f.write('data: {"choices": [{"delta": {"content": "xin chao"}, "finish_reason": "stop"}]}\n')
+        return SimpleNamespace(stdout="200", stderr="")
+
+    monkeypatch.setattr(router.subprocess, "run", fake_run)
+    res = router.transcribe_once(str(mp3), "prompt", str(tmp_path / "req.json"), str(raw))
+    assert isinstance(res, dict)
+    assert res["http"] == "200"
+
+
 def _mai_res(http, text="", error=None, retry_after=None):
     return {"text": text, "words": [], "http": http, "error": error, "retry_after": retry_after}
 
@@ -102,3 +129,19 @@ def test_mai_once_dumps_headers_and_reads_retry_after(monkeypatch, tmp_path):
     res = mai.transcribe_once(str(tmp_path / "00.mp3"), str(tmp_path / "00.json"))
     assert "-D" in seen["argv"]
     assert res["http"] == "429" and res["retry_after"] == "12"
+
+
+def test_mai_once_survives_a_stale_header_dump_it_cannot_remove(monkeypatch, tmp_path):
+    # Same guard as the router client: os.remove on the previous attempt's header dump can raise
+    # on Windows. transcribe_once must still return a dict, never raise.
+    (tmp_path / "00.json.headers").write_text("HTTP/2 429\r\nRetry-After: 99\r\n\r\n", encoding="utf-8")
+    monkeypatch.setattr(mai.config, "API_KEY", "k")
+    monkeypatch.setattr(mai.os, "remove", _raise_oserror)
+
+    def fake_run(argv, capture_output, text, encoding, errors):
+        return SimpleNamespace(stdout='{"text": "xin chao", "words": []}\n|HTTP200')
+
+    monkeypatch.setattr(mai.subprocess, "run", fake_run)
+    res = mai.transcribe_once(str(tmp_path / "00.mp3"), str(tmp_path / "00.json"))
+    assert isinstance(res, dict)
+    assert res["http"] == "200"

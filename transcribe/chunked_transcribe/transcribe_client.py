@@ -74,7 +74,10 @@ def transcribe_once(mp3_path: str, prompt: str, req_path: str, raw_path: str) ->
         f.write(_payload(mp3_path, prompt))
     hdr_path = raw_path + ".headers"
     if os.path.exists(hdr_path):        # never read the previous attempt's Retry-After
-        os.remove(hdr_path)
+        try:
+            os.remove(hdr_path)
+        except OSError:
+            pass  # e.g. a Windows sharing violation; worst case one stale Retry-After wait
     try:
         proc = subprocess.run(
             ["curl", "-s", "-N", "-m", str(config.HTTP_TIMEOUT_SEC), config.BASE_URL + "/chat/completions",

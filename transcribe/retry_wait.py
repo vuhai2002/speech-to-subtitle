@@ -24,7 +24,12 @@ def wait_seconds(attempt: int, base: float, http: str | None, retry_after: str |
 
 
 def retry_after_from_headers(headers_path: str) -> str | None:
-    """Last Retry-After value in a curl -D header dump (a redirect adds header blocks), or None."""
+    """Last Retry-After value in a curl -D header dump, or None.
+
+    A dump can hold more than one header block: curl runs without -L (no redirects followed),
+    so the multi-block case is 1xx interim responses (e.g. 100 Continue on a request body over
+    1 MB), not a redirect.
+    """
     try:
         with open(headers_path, encoding="utf-8", errors="replace") as f:
             text = f.read()
