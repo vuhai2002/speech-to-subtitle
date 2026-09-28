@@ -10,6 +10,7 @@ import subprocess
 import time
 
 from . import config
+from transcribe.retry_wait import retry_after_from_headers, wait_seconds
 
 
 def _payload(mp3_path: str, prompt: str) -> str:
@@ -71,12 +72,15 @@ def transcribe_once(mp3_path: str, prompt: str, req_path: str, raw_path: str) ->
         raise RuntimeError("missing ROUTER_API_KEY in the environment")
     with open(req_path, "w") as f:
         f.write(_payload(mp3_path, prompt))
+    hdr_path = raw_path + ".headers"
+    if os.path.exists(hdr_path):        # never read the previous attempt's Retry-After
+        os.remove(hdr_path)
     try:
         proc = subprocess.run(
             ["curl", "-s", "-N", "-m", str(config.HTTP_TIMEOUT_SEC), config.BASE_URL + "/chat/completions",
              "-H", "Authorization: Bearer " + config.API_KEY, "-H", "Content-Type: application/json",
              "-H", "User-Agent: " + config.USER_AGENT, "--data-binary", "@" + req_path,
-             "-o", raw_path, "-w", "%{http_code}"], capture_output=True, text=True)
+             "-D", hdr_path, "-o", raw_path, "-w", "%{http_code}"], capture_output=True, text=True)
     except FileNotFoundError:
         return _transport_fail("curl not found on PATH", "000")
     code = proc.stdout.strip()
@@ -88,6 +92,7 @@ def transcribe_once(mp3_path: str, prompt: str, req_path: str, raw_path: str) ->
         return _transport_fail(detail, code or "000")
     res = _parse_sse(open(raw_path, encoding="utf-8", errors="replace").read())
     res["http"] = code
+    res["retry_after"] = retry_after_from_headers(hdr_path)
     return res
 
 
@@ -122,5 +127,5 @@ def transcribe_with_retry(mp3_path: str, prompt: str, speech_sec: float, req_pat
         if not reasons:
             return {"res": res, "attempts": att, "reasons": [], "locked": False}
         if att < config.MAX_ATTEMPTS:
-            time.sleep(config.RETRY_BACKOFF_SEC)
+            time.sleep(wait_seconds(att, config.RETRY_BACKOFF_SEC, res.get("http"), res.get("retry_after")))
     return {"res": res, "attempts": config.MAX_ATTEMPTS, "reasons": reasons, "locked": False}

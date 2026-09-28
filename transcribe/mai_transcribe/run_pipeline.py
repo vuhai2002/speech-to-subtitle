@@ -15,12 +15,14 @@ request limit. See docs/mai-transcribe-notes.md.
 """
 import argparse
 import json
+import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 
+from transcribe import exit_codes
 from transcribe.chunked_transcribe import audio_utils
 
 from . import config, transcribe_client
@@ -128,8 +130,12 @@ def main():
     if a.workers:
         config.CONCURRENCY = a.workers
     t0 = time.time()
-    run(a.input, a.out_dir)
+    res = run(a.input, a.out_dir)
     print(f"total time {time.time() - t0:.0f}s")
+    if res["failed"]:
+        print(f"INCOMPLETE: chunks {sorted(res['failed'])} have no transcript (failed after retry); "
+              "see manifest.json", file=sys.stderr, flush=True)
+        sys.exit(exit_codes.INCOMPLETE)
 
 
 if __name__ == "__main__":

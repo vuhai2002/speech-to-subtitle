@@ -134,6 +134,20 @@ See `webui/README.md` and `docs/webui-design.md`.
 
 ---
 
+## Exit codes
+
+`run_pipeline` and `build_srt` (both backends) report the outcome by exit code; the desktop app and the web UI rely on it.
+
+| Code | Meaning |
+|---|---|
+| 0 | Done. |
+| 3 | `run_pipeline` only. At least one chunk failed every retry or hit a 403. `manifest.json` is still written and lists the chunks (`note` starts with `error after retry` or `403`). Do not build a subtitle from this run; re-run the file. |
+| 4 | `build_srt` only. No word got a timestamp, so no cue exists. No `.srt` is written. |
+
+Dropped "fabricated" / "hallucination?" chunks (words over near-silence) do not change the exit code: they are warnings, listed in `manifest.json`.
+
+Retries wait `RETRY_BACKOFF_SEC * 2^(attempt-1)` with +-50% jitter, capped at 120 s; on HTTP 429/503 a longer `Retry-After` from the server wins (`transcribe/retry_wait.py`).
+
 ## Quality controls in depth
 
 - **Chunking at silence.** VAD (silero) finds speech; chunks are cut in the longest silence near each ~10-minute mark, so no word is split across chunks.

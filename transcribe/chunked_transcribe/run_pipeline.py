@@ -7,11 +7,13 @@ Output (no AI):
   <out>/manifest.json        per-chunk status + guard
 
 Processes config.CONCURRENCY chunks in parallel (default 3). Each chunk retries up to MAX_ATTEMPTS on failure.
-On 403 (account locked): soft stop - mark the chunk as not transcribed, report the file as incomplete for a re-run.
+On 403 (account locked): soft stop - mark the chunk as not transcribed, report the file as incomplete
+(exit code 3, see transcribe/exit_codes.py).
 Chunks are independent, so they are merged back in order once done.
 """
 import argparse
 import json
+import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -19,6 +21,7 @@ from datetime import datetime
 from pathlib import Path
 
 from . import audio_utils, config, transcribe_client
+from transcribe import exit_codes
 
 
 def _now() -> str:
@@ -110,8 +113,13 @@ def main():
     if a.workers:
         config.CONCURRENCY = a.workers
     t0 = time.time()
-    run(a.input, a.out_dir, a.prompt_file)
+    res = run(a.input, a.out_dir, a.prompt_file)
     print(f"total time {time.time() - t0:.0f}s")
+    bad = sorted(set(res["failed"]) | set(res["locked"]))
+    if bad:
+        print(f"INCOMPLETE: chunks {bad} have no transcript (failed after retry or 403); "
+              "see manifest.json", file=sys.stderr, flush=True)
+        sys.exit(exit_codes.INCOMPLETE)
 
 
 if __name__ == "__main__":

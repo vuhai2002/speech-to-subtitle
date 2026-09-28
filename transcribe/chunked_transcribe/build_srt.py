@@ -15,6 +15,7 @@ import time
 from pathlib import Path
 
 from . import config
+from transcribe import exit_codes
 
 sys.path.insert(0, str(config.PROJECT_ROOT))  # so realign in the repo can be imported
 
@@ -55,15 +56,20 @@ def build(out_dir: str, device: str = "cuda") -> str:
     out = Path(out_dir)
     print(f"{time.strftime('%H:%M:%S')} align each chunk (MMS, {device})", flush=True)
     words, region, name = _aligned_words(out_dir, device)
+    if not any(w.get("start") is not None for w in words):
+        raise exit_codes.NoAlignedWords(f"no aligned word out of {len(words)} (nothing to write)")
     print(f"{time.strftime('%H:%M:%S')} build cues (realign) from {len(words)} words | vad {region}", flush=True)
     cues = build_cues(words, rcfg)
     cues = clamp_cues(cues, region, rcfg)
+    if not cues:
+        raise exit_codes.NoAlignedWords(f"{len(words)} words built no cue (nothing to write)")
     srt_path = out / f"{name}.srt"
     srt_path.write_text(cues_to_srt(cues), encoding="utf-8")
     scores = [w["score"] for w in words if w.get("score") is not None]
-    last = cues[-1]["end"] if cues else 0.0
+    mean = f"{sum(scores) / len(scores):.3f}" if scores else "n/a"
+    last = cues[-1]["end"]
     print(f"{time.strftime('%H:%M:%S')} done: {len(cues)} cues | last cue ends {int(last)//60:02d}:{int(last)%60:02d}"
-          f" | mean MMS score {sum(scores)/len(scores):.3f} | -> {srt_path}", flush=True)
+          f" | mean MMS score {mean} | -> {srt_path}", flush=True)
     return str(srt_path)
 
 
@@ -72,7 +78,11 @@ def main():
     ap.add_argument("--out-dir", required=True, help="run_pipeline output directory")
     ap.add_argument("--device", default="cuda")
     a = ap.parse_args()
-    build(a.out_dir, a.device)
+    try:
+        build(a.out_dir, a.device)
+    except exit_codes.NoAlignedWords as e:
+        print(f"NO_ALIGNED_WORDS: {e}", file=sys.stderr, flush=True)
+        sys.exit(exit_codes.NO_ALIGNED_WORDS)
 
 
 if __name__ == "__main__":

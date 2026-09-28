@@ -22,7 +22,7 @@ HTTP_TIMEOUT_SEC = 600
 # Number of chunks sent in parallel. OpenRouter is a stable paid endpoint; 3 threads is enough and safe.
 CONCURRENCY = int(os.getenv("MAI_WORKERS", "3"))
 MAX_ATTEMPTS = 3                # retries per chunk on network error / empty / HTTP != 200
-RETRY_BACKOFF_SEC = 5.0         # pause between retries
+RETRY_BACKOFF_SEC = 5.0         # base pause between retries; doubles per attempt with jitter (transcribe/retry_wait.py)
 
 # PROJECT_ROOT derived from the file location (mai_transcribe -> transcribe -> repo root), not hardcoded
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
