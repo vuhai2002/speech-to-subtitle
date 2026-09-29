@@ -96,6 +96,18 @@ def test_blocked_chunk_without_speech_follows_the_speech_rule(monkeypatch, tmp_p
     assert calls[0][2] is False           # MAI is not asked to find speech in a chunk VAD calls silent
 
 
+def test_mai_expect_speech_uses_geminis_short_chunk_exemption(monkeypatch, tmp_path):
+    # A 50s chunk with 28s speech (56%) is "has speech" by chunk_has_speech's ratio rule, but Gemini's own
+    # text guard exempts anything under MIN_SPEECH_CHUNK_SEC (30s) from the empty/low-density check. MAI
+    # must be held to that same floor, or a legitimately-short empty reply gets billed for 3 retries and
+    # fails a chunk that an equivalent empty Gemini reply (finish=stop) would have accepted.
+    short_chunk = {"idx": 7, "start": 0.0, "end": 50.0, "speech_sec": 28.0, "cut_gap_sec": 1.5}
+    calls = _setup(monkeypatch, tmp_path, mai_result={"res": {"text": ""}, "attempts": 1, "reasons": []})
+    rec = _process(tmp_path, short_chunk)
+    assert calls[0][2] is False
+    assert rec["included"] is True and rec["engine"] == "mai"
+
+
 def test_unblocked_chunk_has_no_engine_and_never_calls_mai(monkeypatch, tmp_path):
     calls = _setup(monkeypatch, tmp_path)
     ok = {"res": {"text": MAI_TEXT, "finish": "stop", "http": "200", "served_model": "m", "usage": None,

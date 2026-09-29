@@ -8,7 +8,7 @@ as Gemini's (transcribe_client.text_reasons) and is later timed by MMS like any 
 from transcribe.mai_transcribe import config as mai_config
 from transcribe.mai_transcribe import transcribe_client as mai_client
 
-from . import audio_utils, transcribe_client
+from . import config, transcribe_client
 
 NO_KEY = "no OpenRouter key for the MAI fallback"
 FAILED = "MAI fallback failed: "
@@ -26,7 +26,9 @@ def transcribe_blocked_chunk(mp3_path: str, raw_path: str, chunk: dict) -> dict:
     if not mai_config.API_KEY:
         return {"ok": False, "text": "", "why": NO_KEY}
     try:
-        r = mai_client.transcribe_with_retry(mp3_path, raw_path, expect_speech=audio_utils.chunk_has_speech(chunk))
+        # Same speech floor Gemini's own text guard uses (transcribe_client.text_reasons), not chunk_has_speech's laxer ratio rule.
+        expect_speech = chunk["speech_sec"] >= config.MIN_SPEECH_CHUNK_SEC
+        r = mai_client.transcribe_with_retry(mp3_path, raw_path, expect_speech=expect_speech)
     except Exception as e:
         # Report only the exception type, never str(e): subprocess failures (TimeoutExpired,
         # CalledProcessError) embed the full curl command line, including "Authorization: Bearer <key>".
