@@ -39,7 +39,7 @@ Rules for AI agents working in this repo. Read `README.md` to understand the flo
 - Do not bulk-delete `out/words/*.json`: that is the alignment cache, and each file takes several minutes of GPU to regenerate.
 - Do not commit `out/`, `test-files/`, `.env`, `service-account-key.json`, or `*.log`.
 - Do not write to production. Any import into the downstream system must be run as a dry run first and reviewed by the user.
-- Do not change the exit codes in transcribe/exit_codes.py or the manifest note prefixes (error after retry, 403, fabricated, hallucination?, skipped) without updating desktop-video-streaming-pq, which reads them to refuse partial subtitles.
+- Do not change the exit codes in transcribe/exit_codes.py, the manifest note prefixes (error after retry, 403, fabricated, hallucination?, skipped, mai fallback) or the manifest `engine` field without updating desktop-video-streaming-pq, which reads them to refuse partial subtitles and to report chunks MAI transcribed after a Gemini filter block.
 
 ## Testing
 

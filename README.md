@@ -146,6 +146,8 @@ See `webui/README.md` and `docs/webui-design.md`.
 
 Dropped "fabricated" / "hallucination?" chunks (words over near-silence) do not change the exit code: they are warnings, listed in `manifest.json`.
 
+**Gemini filter blocks.** Gemini's safety filter sometimes refuses a chunk with a fixed message (`This request was blocked by Gemini's filters...`, no `finish_reason`). The same audio is refused every time, so such a chunk is not retried. When `OPENROUTER_API_KEY` is set, the chunk is transcribed by MAI-Transcribe-2 instead (`transcribe/chunked_transcribe/mai_fallback.py`); its manifest entry gets `"engine": "mai"` and, when merged, the note `mai fallback: gemini blocked by filters`. Without the key, or if MAI fails, the note is `error after retry: blocked by Gemini filters; <reason>` and the run exits 3.
+
 Retries wait `RETRY_BACKOFF_SEC * 2^(attempt-1)` with +-50% jitter, capped at 120 s; on HTTP 429/503 a longer `Retry-After` from the server wins (`transcribe/retry_wait.py`).
 
 ## Quality controls in depth

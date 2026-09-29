@@ -20,7 +20,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 
-from . import audio_utils, config, transcribe_client
+from . import audio_utils, config, mai_fallback, transcribe_client
 from transcribe import exit_codes
 
 
@@ -29,7 +29,11 @@ def _now() -> str:
 
 
 def _process_chunk(c: dict, out: Path, mono: str, prompt: str, log_lock: threading.Lock) -> dict:
-    """Cut one chunk from mono16k then transcribe (with retry). Runs in one pool thread."""
+    """Cut one chunk from mono16k then transcribe (with retry). Runs in one pool thread.
+
+    A chunk Gemini's safety filter refuses is transcribed by MAI instead when an OpenRouter key is set
+    (mai_fallback); its manifest record then carries engine="mai".
+    """
     k = c["idx"]
     mp3 = str(out / "chunks" / f"{k:02d}.mp3")
     audio_utils.cut_chunk(mono, c["start"], c["end"], mp3)
@@ -37,24 +41,37 @@ def _process_chunk(c: dict, out: Path, mono: str, prompt: str, log_lock: threadi
         mp3, prompt, c["speech_sec"], str(out / "chunks" / f"{k:02d}_req.json"), str(out / "chunks" / f"{k:02d}_raw.sse"))
     res = r["res"]
     text = res.get("text", "")
+    reasons = r["reasons"]
+    engine = None
+    if r.get("blocked"):
+        fb = mai_fallback.transcribe_blocked_chunk(mp3, str(out / "chunks" / f"{k:02d}_mai.json"), c)
+        if fb["ok"]:
+            text, engine, reasons = fb["text"], "mai", []
+        else:
+            reasons = reasons + [fb["why"]]
     (out / "chunks" / f"{k:02d}.txt").write_text(text, encoding="utf-8")
     words = len(text.split())
     rec = {**c, "attempts": r["attempts"], "http": res.get("http"), "served_model": res.get("served_model"),
            "finish": res.get("finish"), "words": words, "usage": res.get("usage"),
-           "included": False, "locked": r["locked"], "note": "; ".join(r["reasons"])}
+           "included": False, "locked": r["locked"], "note": "; ".join(reasons)}
+    if engine:
+        rec["engine"] = engine
     if r["locked"]:
         rec["note"] = "403 account locked - not transcribed"
-    elif r["reasons"]:                               # failed after all retries (error / empty / unreachable) -> do not merge
+    elif reasons:                                   # failed after all retries (error / empty / unreachable / blocked) -> do not merge
         rec["note"] = "error after retry: " + rec["note"]
     elif not audio_utils.chunk_has_speech(c):
         rec["note"] = ("fabricated (chunk has no speech but returned words)" if words > 20 else "skipped (no speech)")
     else:
         rec["included"] = True
+        if engine == "mai":
+            rec["note"] = "mai fallback: gemini blocked by filters"
     density = words / (c["speech_sec"] / 60) if c["speech_sec"] > 0 else 0
     with log_lock:
         state = "MERGED" if rec["included"] else ("LOCKED-403" if r["locked"] else "SKIP: " + rec["note"])
+        tail = " | MAI (gemini blocked)" if engine == "mai" else ""
         print(f"    chunk {k:02d} {c['start']/60:5.1f}-{c['end']/60:5.1f}m | speech {c['speech_sec']:4.0f}s | {words:5} words "
-              f"({density:3.0f}/min) | {r['attempts']} tries | {res.get('finish')} | {state}", flush=True)
+              f"({density:3.0f}/min) | {r['attempts']} tries | {res.get('finish')} | {state}{tail}", flush=True)
     return rec
 
 
