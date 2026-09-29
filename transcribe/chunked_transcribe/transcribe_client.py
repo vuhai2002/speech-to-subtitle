@@ -99,36 +99,65 @@ def transcribe_once(mp3_path: str, prompt: str, req_path: str, raw_path: str) ->
     return res
 
 
+# Gemini's safety filter answers some chunks with a fixed refusal streamed as ordinary content and no
+# finish_reason ("This request was blocked by Gemini's filters. ..."). It is deterministic for the same
+# audio, so retrying the same chunk never helps.
+FILTER_BLOCK_MARKER = "blocked by gemini's filters"
+BLOCKED_REASON = "blocked by Gemini filters"
+
+
+def is_filter_block(res: dict) -> bool:
+    """True when the reply is Gemini's filter refusal rather than a transcript.
+
+    Both conditions are required, so a real transcript that happens to contain these words (and ends
+    normally with finish_reason=stop) is never mistaken for a block.
+    """
+    text = (res.get("text") or "").lower().replace("\u2019", "'")
+    return not res.get("finish") and FILTER_BLOCK_MARKER in text
+
+
+def text_reasons(text: str, speech_sec: float) -> list[str]:
+    """Reasons a transcript text is unusable for a chunk: empty, or too sparse for the speech it holds.
+
+    Shared by the Gemini guard and the MAI fallback so both engines are held to the same bar.
+    """
+    if speech_sec < config.MIN_SPEECH_CHUNK_SEC:
+        return []
+    if not text.strip():
+        return ["empty despite speech present"]
+    density = len(text.split()) / (speech_sec / 60)
+    if density < config.MIN_WORDS_PER_SPEECH_MIN:
+        return [f"low word density ({density:.0f}/min)"]
+    return []
+
+
 def guard_reasons(res: dict, speech_sec: float) -> list[str]:
     """Reasons a call is considered BAD (needs retry): error / finish!=stop / empty / low word density."""
-    words = len(res["text"].split())
-    density = words / (speech_sec / 60) if speech_sec > 0 else None
     reasons = []
     if res["errors"]:
         reasons.append("error")
     if res["finish"] != "stop":
         reasons.append(f"finish={res['finish'] or 'empty'}")
-    if speech_sec >= config.MIN_SPEECH_CHUNK_SEC and not res["text"].strip():
-        reasons.append("empty despite speech present")
-    if (speech_sec >= config.MIN_SPEECH_CHUNK_SEC and res["text"].strip()
-            and density is not None and density < config.MIN_WORDS_PER_SPEECH_MIN):
-        reasons.append(f"low word density ({density:.0f}/min)")
-    return reasons
+    return reasons + text_reasons(res["text"], speech_sec)
 
 
 def transcribe_with_retry(mp3_path: str, prompt: str, speech_sec: float, req_path: str, raw_path: str) -> dict:
-    """Call + retry up to MAX_ATTEMPTS on failure. On 403 (account locked), STOP immediately, no retry.
+    """Call + retry up to MAX_ATTEMPTS on failure. On 403 (account locked) or a Gemini filter block, STOP
+    immediately, no retry: both are deterministic.
 
-    Returns: {res, attempts, reasons, locked}. locked=True means the account got a 403 -> the whole file should stop.
+    Returns: {res, attempts, reasons, locked, blocked}. locked=True means the account got a 403 -> the whole
+    file should stop; blocked=True means Gemini's safety filter refused this chunk (see is_filter_block).
     """
     res, reasons = {}, []
     for att in range(1, config.MAX_ATTEMPTS + 1):
         res = transcribe_once(mp3_path, prompt, req_path, raw_path)
         if _is_403(res):
-            return {"res": res, "attempts": att, "reasons": ["403 account locked"], "locked": True}
+            return {"res": res, "attempts": att, "reasons": ["403 account locked"], "locked": True, "blocked": False}
+        if is_filter_block(res):
+            return {"res": res, "attempts": att, "reasons": [BLOCKED_REASON], "locked": False, "blocked": True}
         reasons = guard_reasons(res, speech_sec)
         if not reasons:
-            return {"res": res, "attempts": att, "reasons": [], "locked": False}
+            return {"res": res, "attempts": att, "reasons": [], "locked": False, "blocked": False}
         if att < config.MAX_ATTEMPTS:
             time.sleep(wait_seconds(att, config.RETRY_BACKOFF_SEC, res.get("http"), res.get("retry_after")))
-    return {"res": res, "attempts": config.MAX_ATTEMPTS, "reasons": reasons, "locked": False}
+    return {"res": res, "attempts": config.MAX_ATTEMPTS, "reasons": reasons, "locked": False, "blocked": False}
