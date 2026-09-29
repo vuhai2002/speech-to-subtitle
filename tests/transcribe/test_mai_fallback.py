@@ -6,14 +6,18 @@ from transcribe.chunked_transcribe import mai_fallback, run_pipeline
 BLOCKED = {"res": {"text": "This request was blocked by Gemini's filters.", "finish": "", "http": "200",
                    "served_model": "gemini-3.8-flash", "usage": None, "errors": []},
            "attempts": 1, "reasons": ["blocked by Gemini filters"], "locked": False, "blocked": True}
+NOT_BLOCKED_FAILURE = {"res": {"text": "", "finish": "", "http": "500", "served_model": "m", "usage": None,
+                               "errors": []},
+                        "attempts": 3, "reasons": ["http=500"], "locked": False, "blocked": False}
 CHUNK = {"idx": 7, "start": 3600.0, "end": 4200.0, "speech_sec": 400.0, "cut_gap_sec": 1.5}
 MAI_TEXT = "ngay cả những người xấu cũng cần tấm gương trong sạch " * 60
 
 
-def _setup(monkeypatch, tmp_path, key="k", mai_result=None):
+def _setup(monkeypatch, tmp_path, key="k", mai_result=None, router_result=None):
     (tmp_path / "chunks").mkdir()
     monkeypatch.setattr(run_pipeline.audio_utils, "cut_chunk", lambda *a, **k: None)
-    monkeypatch.setattr(run_pipeline.transcribe_client, "transcribe_with_retry", lambda *a, **k: BLOCKED)
+    monkeypatch.setattr(run_pipeline.transcribe_client, "transcribe_with_retry",
+                         lambda *a, **k: router_result if router_result is not None else BLOCKED)
     monkeypatch.setattr(mai_fallback.mai_config, "API_KEY", key)
     calls = []
 
@@ -37,7 +41,7 @@ def test_blocked_chunk_is_transcribed_by_mai(monkeypatch, tmp_path, capsys):
     assert (tmp_path / "chunks" / "07.txt").read_text(encoding="utf-8") == MAI_TEXT
     assert calls == [(str(tmp_path / "chunks" / "07.mp3"), str(tmp_path / "chunks" / "07_mai.json"), True)]
     line = capsys.readouterr().out
-    assert line.lstrip().startswith("chunk 07 ")
+    assert line.startswith("    chunk 07 ")
     assert line.rstrip().endswith("MERGED | MAI (gemini blocked)")
 
 
@@ -54,6 +58,27 @@ def test_mai_error_keeps_the_chunk_failed(monkeypatch, tmp_path):
     rec = _process(tmp_path)
     assert rec["included"] is False and "engine" not in rec
     assert rec["note"] == "error after retry: blocked by Gemini filters; MAI fallback failed: http=402"
+
+
+def test_mai_exception_keeps_the_chunk_failed_instead_of_crashing_the_run(monkeypatch, tmp_path):
+    _setup(monkeypatch, tmp_path)
+
+    def raising_mai(mp3, raw, expect_speech):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(mai_fallback.mai_client, "transcribe_with_retry", raising_mai)
+    rec = _process(tmp_path)
+    assert rec["included"] is False and "engine" not in rec
+    assert rec["note"] == "error after retry: blocked by Gemini filters; MAI fallback failed: RuntimeError"
+
+
+def test_mai_failure_reason_whitespace_is_collapsed_to_one_line(monkeypatch, tmp_path, capsys):
+    _setup(monkeypatch, tmp_path, mai_result={"res": {"text": ""}, "attempts": 3,
+                                               "reasons": ["error: body is not JSON: \n", "http=000"]})
+    rec = _process(tmp_path)
+    assert rec["included"] is False and "engine" not in rec
+    assert "\n" not in rec["note"]
+    assert capsys.readouterr().out.count("\n") == 1     # one printed chunk line, not split by the raw error body
 
 
 def test_mai_text_too_sparse_for_the_speech_keeps_the_chunk_failed(monkeypatch, tmp_path):
@@ -79,4 +104,14 @@ def test_unblocked_chunk_has_no_engine_and_never_calls_mai(monkeypatch, tmp_path
     monkeypatch.setattr(run_pipeline.transcribe_client, "transcribe_with_retry", lambda *a, **k: ok)
     rec = _process(tmp_path)
     assert rec["included"] is True and "engine" not in rec and rec["note"] == ""
+    assert calls == []
+
+
+def test_non_blocked_failure_never_calls_mai(monkeypatch, tmp_path):
+    # Pins the scope decision: MAI is a fallback ONLY for a Gemini filter block (r["blocked"]), never
+    # for an ordinary post-retry failure such as a plain HTTP error.
+    calls = _setup(monkeypatch, tmp_path, router_result=NOT_BLOCKED_FAILURE)
+    rec = _process(tmp_path)
+    assert rec["included"] is False and "engine" not in rec
+    assert rec["note"] == "error after retry: http=500"
     assert calls == []
