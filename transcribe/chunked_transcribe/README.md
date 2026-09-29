@@ -25,13 +25,18 @@ Neither is a guarantee. They narrow down what you have to listen to; they don't 
 Required environment variables (do not hardcode; see `.env.example` at the repo root):
 
 ```
-ROUTER_BASE_URL   e.g. https://<router-host>/v1
-ROUTER_API_KEY    router api key
-TRANSCRIBE_MODEL  optional, default ag/gemini-3.8-flash
-ROUTER_WORKERS    optional, number of chunks sent in parallel, default 3
+ROUTER_BASE_URL     e.g. https://<router-host>/v1
+ROUTER_API_KEY      router api key
+TRANSCRIBE_MODEL    optional, default ag/gemini-3.8-flash
+ROUTER_WORKERS      optional, number of chunks sent in parallel, default 3
+OPENROUTER_API_KEY  optional, turns on the MAI fallback for filter-blocked chunks
+MAI_MODEL           optional, default microsoft/mai-transcribe-2
+MAI_LANGUAGE        optional, default vi
 ```
 
 Chunks are sent **in parallel** (default 3 workers, change with `--workers` or `ROUTER_WORKERS`). Each chunk **retries up to 3 times** on error, empty response, `finish != stop`, or too-low character density, with a pause between attempts. On a **403** (banned account) that chunk stops without retrying, and the whole file is marked "incomplete" so it can be rerun later (rather than crashing the whole batch).
+
+A **Gemini safety-filter block** also stops that chunk at the first attempt instead of retrying (the block repeats for the same audio, so retries would not help). The chunk then goes to the **MAI fallback** (`mai_fallback.py`, MAI-Transcribe-2 via OpenRouter) when `OPENROUTER_API_KEY` is set; otherwise it stays failed, same as a 403. The fallback runs whenever `OPENROUTER_API_KEY` is present in the environment - this includes the web UI, which copies saved keys into the environment for its jobs - so unset the variable to keep the old fail-closed behavior.
 
 Run from the repo root via `.venv` (which has torch + silero + MMS, like realign):
 
@@ -69,7 +74,7 @@ Transcribe a second pass (different model), then compare the two passes and expo
 |---|---|
 | `raw_transcript.txt` | Joined transcript (chunks with no speech dropped) |
 | `<audio name>.srt` | Subtitles (after running `build_srt`) |
-| `manifest.json` | Per-chunk status: timing, word count, number of attempts, finish reason, joined or dropped |
+| `manifest.json` | Per-chunk status: timing, word count, number of attempts, finish reason, joined or dropped; a chunk MAI re-transcribed after a Gemini filter block carries `"engine": "mai"` |
 | `qc_report.json` | Self-check results: omissions, needs-a-listen, hallucinations, edge repeats |
 | `plan.json` | Chunk plan + speech regions (VAD) |
 | `mono16k.mp3`, `chunks/` | Mono 16 kHz audio and the individual chunks |
