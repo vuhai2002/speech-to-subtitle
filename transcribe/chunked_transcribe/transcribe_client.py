@@ -65,19 +65,35 @@ def _transport_fail(detail: str, code: str) -> dict:
 
 
 def transcribe_once(mp3_path: str, prompt: str, req_path: str, raw_path: str) -> dict:
-    """One call. Returns the parsed result dict + http_code (does not raise)."""
+    """One call (none when a file left in the chunk folder cannot be replaced). Returns the parsed result dict +
+    http_code. A router or network failure comes back as a failed try; a local error no retry can fix (missing
+    config, an unreadable chunk file, a full disk) raises and stops the run."""
     if not config.BASE_URL:
         raise RuntimeError("missing ROUTER_BASE_URL in the environment")
     if not config.API_KEY:
         raise RuntimeError("missing ROUTER_API_KEY in the environment")
-    with open(req_path, "w") as f:
-        f.write(_payload(mp3_path, prompt))
+    payload = _payload(mp3_path, prompt)    # read first: an unreadable chunk file stops the run under its own name
+    try:
+        with open(req_path, "w") as f:
+            f.write(payload)
+    except (PermissionError, IsADirectoryError) as e:
+        # a read-only, locked or directory leftover at this chunk's request path: fail this try only; anything
+        # else (a full disk, a missing folder) still stops the run with its own message, as before
+        return _transport_fail(f"could not write the request {os.path.basename(req_path)}: "
+                               f"{e.strerror or type(e).__name__}", "000")
     hdr_path = raw_path + ".headers"
     if os.path.exists(hdr_path):        # never read the previous attempt's Retry-After
         try:
             os.remove(hdr_path)
         except OSError:
             pass  # e.g. a Windows sharing violation; worst case one stale Retry-After wait
+    if os.path.exists(raw_path):
+        # never read the previous attempt's answer as this one's: curl writes no -o file when no reply body comes
+        # (no connection, a timeout, a connection dropped after the headers), and an old 403 would stop the run
+        try:
+            os.remove(raw_path)
+        except OSError as e:            # e.g. a Windows sharing violation: fail this try, without a call
+            return _transport_fail(f"could not clear the previous answer ({type(e).__name__})", "000")
     try:
         proc = subprocess.run(
             ["curl", "-s", "-N", "-m", str(config.HTTP_TIMEOUT_SEC), config.BASE_URL + "/chat/completions",
@@ -88,10 +104,12 @@ def transcribe_once(mp3_path: str, prompt: str, req_path: str, raw_path: str) ->
         return _transport_fail("curl not found on PATH", "000")
     code = proc.stdout.strip()
     if not os.path.exists(raw_path):
-        # A connection-level failure (DNS/TLS/refused/timeout, e.g. the router host is down)
-        # makes curl write no -o file, so reading it would raise FileNotFoundError. Report a
-        # clear, retryable transport error instead.
-        detail = (proc.stderr or "").strip()[:160] or f"router unreachable (http {code or '000'})"
+        # No reply body - a connection-level failure (DNS/TLS/refused/timeout, e.g. the router host
+        # is down), or a connection dropped after the headers - makes curl write no -o file, so
+        # reading it would raise FileNotFoundError. Report a clear, retryable transport error instead;
+        # curl -s prints no error text, so its exit code tells why (7 = could not connect, 28 = timed out).
+        detail = ((proc.stderr or "").strip()[:160]
+                  or f"no reply body from the router (http {code or '000'}, curl exit {proc.returncode})")
         return _transport_fail(detail, code or "000")
     res = _parse_sse(open(raw_path, encoding="utf-8", errors="replace").read())
     res["http"] = code

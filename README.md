@@ -129,7 +129,7 @@ See `webui/README.md` and `docs/webui-design.md`.
 - **`ERROR: No matching distribution found for torch==2.5.1` during setup.** Same cause: the venv's Python is too new for the tested CUDA torch (Python 3.10-3.13 only). Install Python 3.12, delete `.venv`, re-run the launcher.
 - **A job fails immediately, or `ffmpeg` is not found.** `ffmpeg` must be installed and on PATH (it decodes the audio). Check with `ffmpeg -version`; install from ffmpeg.org, or `winget install Gyan.FFmpeg` / `brew install ffmpeg` / `apt install ffmpeg`.
 - **Test connection says `Invalid API key (401)`.** The key is wrong - re-enter it in Settings. A Router result of "Key accepted (this server does not allow listing models...)" is **not** an error: the key is valid, the server just blocks model listing.
-- **A job errors with "router unreachable" / a transport error.** The Router (OpenAI-compatible) host is down or unreachable. Check the Base URL in Settings and that the server is up; the job retries and reports the chunk as incomplete if it stays down.
+- **A job errors with "no reply body from the router" / a transport error.** The Router (OpenAI-compatible) host is down or unreachable. Check the Base URL in Settings and that the server is up; the job retries and reports the chunk as incomplete if it stays down.
 - **Port 8000 is already in use.** The server automatically uses the next free port and prints the real URL in the console - open that one.
 
 ---
