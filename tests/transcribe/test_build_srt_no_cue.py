@@ -10,7 +10,7 @@ from transcribe.mai_transcribe import build_srt as mai_bs
 
 
 def test_router_no_words_raises_before_writing(monkeypatch, tmp_path):
-    monkeypatch.setattr(router_bs, "_aligned_words", lambda out_dir, device: ([], None, "bai"))
+    monkeypatch.setattr(router_bs, "_aligned_words", lambda out_dir, device, models=None: ([], None, "bai", {}))
     with pytest.raises(exit_codes.NoAlignedWords):
         router_bs.build(str(tmp_path), "cpu")
     assert not (tmp_path / "bai.srt").exists()
@@ -18,7 +18,7 @@ def test_router_no_words_raises_before_writing(monkeypatch, tmp_path):
 
 def test_router_words_without_timestamps_raise(monkeypatch, tmp_path):
     words = [{"w": "xin", "start": None, "end": None, "score": None}]
-    monkeypatch.setattr(router_bs, "_aligned_words", lambda out_dir, device: (words, None, "bai"))
+    monkeypatch.setattr(router_bs, "_aligned_words", lambda out_dir, device, models=None: (words, None, "bai", {}))
     with pytest.raises(exit_codes.NoAlignedWords):
         router_bs.build(str(tmp_path), "cpu")
     assert not (tmp_path / "bai.srt").exists()
@@ -28,14 +28,14 @@ def test_router_words_without_scores_still_build(monkeypatch, tmp_path):
     # The mean MMS score used to divide by zero when no word carried a score.
     words = [{"w": "xin", "start": 1.0, "end": 1.4, "score": None},
              {"w": "chào.", "start": 1.5, "end": 2.0, "score": None}]
-    monkeypatch.setattr(router_bs, "_aligned_words", lambda out_dir, device: (words, None, "bai"))
+    monkeypatch.setattr(router_bs, "_aligned_words", lambda out_dir, device, models=None: (words, None, "bai", {}))
     path = router_bs.build(str(tmp_path), "cpu")
     assert (tmp_path / "bai.srt").read_text(encoding="utf-8").strip() != ""
     assert path.endswith("bai.srt")
 
 
 def test_router_main_exits_4(monkeypatch, tmp_path, capsys):
-    monkeypatch.setattr(router_bs, "_aligned_words", lambda out_dir, device: ([], None, "bai"))
+    monkeypatch.setattr(router_bs, "_aligned_words", lambda out_dir, device, models=None: ([], None, "bai", {}))
     monkeypatch.setattr(sys, "argv", ["build_srt", "--out-dir", str(tmp_path), "--device", "cpu"])
     with pytest.raises(SystemExit) as e:
         router_bs.main()

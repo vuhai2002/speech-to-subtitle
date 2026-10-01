@@ -97,8 +97,8 @@ Step 4 assumes a uniform speaking rate through the file. If it isn't uniform, th
    - Each group targets roughly total characters / k.
    - Prefer a break once 60% of the target is reached and a `, ; :` mark or a `PAUSE_SPLIT` = 0.6s pause is encountered.
    - Once 100% of the target is reached, break immediately.
-4. `_enforce_min_display`: extend a cue to meet `DUR_MIN` = 1.5s and a maximum reading speed of `CPS_MAX` = 15 characters/second, without exceeding `DUR_MAX` = 7s and without touching the next cue (leaving `GAP_MIN`). If there isn't room, merge into the previous cue; if that isn't possible, merge into the next cue; if that still isn't possible, leave it as is and guarantee a minimum of `FLOOR` = 0.3s.
-5. `_deisolate_boundaries`: if the first or last cue in the file has only 1-2 words and is `ISOLATION_GAP` = 8s or more from the adjacent cue, treat it as a misalignment at the boundary and merge its text into the adjacent cue.
+4. `_enforce_min_display`: extend a cue to meet `DUR_MIN` = 1.5s and a maximum reading speed of `CPS_MAX` = 15 characters/second, without exceeding `DUR_MAX` = 7s and without touching the next cue (leaving `GAP_MIN`). If there isn't room, merge into the previous cue; if that isn't possible, merge into the next cue; if that still isn't possible, leave it as is and guarantee a minimum of `FLOOR` = 0.3s. A caller can pass `max_back_gap` so a cue never merges into a previous cue that ended longer ago than that (it joins the next cue instead); the Router `build_srt` passes `ISOLATION_GAP` = 8s, because a kept sentence of a chunk VAD hears as silent can sit minutes after the previous cue.
+5. `_deisolate_boundaries`: if the first or last cue in the file has only 1-2 words and is `ISOLATION_GAP` = 8s or more from the adjacent cue, treat it as a misalignment at the boundary and merge its text into the adjacent cue. A caller can keep either end (`merge_head` / `merge_tail` = False); the Router `build_srt` keeps an end whose cue is a kept sentence of a silent chunk, which is real text at its own time.
 6. `wrap_two_lines`: split into 2 lines of at most 42 characters each. Priority order: valid, then two lines of roughly equal length, then a longer bottom line, then a break after a comma.
 
 Character counting (`char_count`): normalize to NFC then ignore combining marks, so an accented character counts as 1 character.
@@ -120,6 +120,7 @@ These rules were tuned after a pilot, based on errors users found while watching
   - Push the first cue's `start` up to the moment speech begins (never earlier, still keeping the cue at least `DUR_MIN` long).
   - Trim the last cue's `end` to the moment speech ends + `VAD_PAD` = 0.3s.
   - The purpose is to drop the music and chanting in the intro and outro.
+  - The Router `build_srt` widens this region to cover the kept sentences of chunks VAD hears as silent, so such a sentence before the first or after the last VAD speech keeps its own time.
 - If the gap to the next cue is less than `PAUSE_GAP` = 0.5s (including overlap): extend `end` close to the next cue's `start`, leaving `GAP_MIN` = 0.084s (2 frames at 24fps), so the subtitles don't flicker.
 
 ## Parameter table (`config.py`)

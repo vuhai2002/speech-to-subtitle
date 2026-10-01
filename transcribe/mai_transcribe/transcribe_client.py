@@ -58,11 +58,14 @@ def transcribe_once(mp3_path: str, raw_path: str) -> dict:
 def transcribe_with_retry(mp3_path: str, raw_path: str, expect_speech: bool) -> dict:
     """Call + retry up to MAX_ATTEMPTS. Considered BAD when: there is an error, HTTP != 200, or empty despite speech present.
 
-    Returns: {res, attempts, reasons}. res is the dict from transcribe_once (last attempt).
+    Returns: {res, attempts, reasons, cost}. res is the dict from transcribe_once (last attempt); cost is the summed
+    USD cost OpenRouter reported over every attempt (each answered attempt is billed), or None when none reported one.
     """
-    res, reasons = {}, []
+    res, reasons, cost = {}, [], None
     for att in range(1, config.MAX_ATTEMPTS + 1):
         res = transcribe_once(mp3_path, raw_path)
+        if isinstance(res.get("cost"), (int, float)):
+            cost = round((cost or 0.0) + res["cost"], 6)
         reasons = []
         if res.get("error"):
             reasons.append("error: " + res["error"][:80])
@@ -71,7 +74,7 @@ def transcribe_with_retry(mp3_path: str, raw_path: str, expect_speech: bool) -> 
         if expect_speech and not res.get("text"):
             reasons.append("empty despite speech present")
         if not reasons:
-            return {"res": res, "attempts": att, "reasons": []}
+            return {"res": res, "attempts": att, "reasons": [], "cost": cost}
         if att < config.MAX_ATTEMPTS:
             time.sleep(wait_seconds(att, config.RETRY_BACKOFF_SEC, res.get("http"), res.get("retry_after")))
-    return {"res": res, "attempts": config.MAX_ATTEMPTS, "reasons": reasons}
+    return {"res": res, "attempts": config.MAX_ATTEMPTS, "reasons": reasons, "cost": cost}

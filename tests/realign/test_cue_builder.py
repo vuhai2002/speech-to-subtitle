@@ -98,3 +98,26 @@ def test_long_sentence_splits_balanced_at_comma():
     assert cues[0]["text"].replace("\n", " ").rstrip().endswith(",")      # split at the comma
     for c in cues:                                                        # no stubby tail
         assert len(c["text"].replace("\n", " ").split()) >= 3
+
+
+def test_boundary_merge_can_be_turned_off_per_end():
+    # A 1-2 word cue isolated by >= ISOLATION_GAP at either end is merged into its neighbour by default (it is
+    # usually a misaligned word). A caller that knows such a cue is real text at its own time can keep it.
+    words = ([W("Mô", 1.0, 1.4), W("Phật.", 1.5, 1.9)]
+             + [W(w, 60.0 + i * 0.3, 60.25 + i * 0.3) for i, w in enumerate(["Hôm", "nay", "ta", "học."])]
+             + [W("Nam", 120.0, 120.4), W("mô.", 120.5, 120.9)])
+    assert len(build_cues(words, cfg)) == 1
+    assert [c["start"] for c in build_cues(words, cfg, merge_head=False, merge_tail=False)] == [1.0, 60.0, 120.0]
+    assert [c["start"] for c in build_cues(words, cfg, merge_tail=False)] == [60.0, 120.0]
+
+
+def test_a_short_cue_can_be_kept_from_merging_back_across_a_long_pause():
+    # "Mô Phật." cannot reach DUR_MIN before the next line, so it is merged. By default into the previous cue,
+    # however far back; with max_back_gap a distant previous cue is skipped and it joins the next line instead.
+    words = ([W(w, 0.0 + i * 0.4, 0.3 + i * 0.4) for i, w in enumerate(["Hôm", "nay", "ta", "học", "tới", "đây."])]
+             + [W("Mô", 100.0, 100.3), W("Phật.", 100.3, 100.6)]
+             + [W(w, 101.0 + i * 0.2, 101.15 + i * 0.2) for i, w in enumerate(["Nam", "mô", "Bổn", "Sư."])])
+    default = build_cues(words, cfg)
+    assert default[0]["text"].replace("\n", " ").endswith("Mô Phật.")      # pulled back ~100 s
+    guarded = build_cues(words, cfg, max_back_gap=cfg.ISOLATION_GAP)
+    assert [(c["start"], c["text"].replace("\n", " ")) for c in guarded][1:] == [(100.0, "Mô Phật. Nam mô Bổn Sư.")]

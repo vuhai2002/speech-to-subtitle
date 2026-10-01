@@ -102,7 +102,11 @@ def _segment_to_cues(words: list[dict], cfg) -> list[list[dict]]:
     return [[w] for w in words]                             # rare fallback (a single word too long)
 
 
-def _enforce_min_display(cues: list[dict], cfg) -> list[dict]:
+def _enforce_min_display(cues: list[dict], cfg, max_back_gap: float | None = None) -> list[dict]:
+    """Give each cue DUR_MIN / CPS_MAX display time; a cue with no room is merged into the previous cue or the next.
+    max_back_gap (seconds, None = no limit) keeps a cue from merging into a previous cue that ended longer ago than
+    that: the merged text would show at the previous cue's time. It then joins the next cue, which starts within
+    DUR_MIN, or stays on its own."""
     out, i = [], 0
     while i < len(cues):
         c = dict(cues[i])
@@ -117,8 +121,10 @@ def _enforce_min_display(cues: list[dict], cfg) -> list[dict]:
             out.append(c)
             i += 1
             continue
-        # not enough room to reach the floor -> merge into the previous cue (preferred) or the next, if chars fit
-        if out and _fits_lines(out[-1]["text"] + " " + c["text"], cfg):
+        # not enough room to reach the floor -> merge into the previous cue (preferred, when close enough in time)
+        # or the next, if chars fit
+        near_prev = bool(out) and (max_back_gap is None or c["start"] - out[-1]["end"] <= max_back_gap)
+        if near_prev and _fits_lines(out[-1]["text"] + " " + c["text"], cfg):
             out[-1]["text"] += " " + c["text"]
             out[-1]["end"] = max(out[-1]["end"], c["end"])
             i += 1
@@ -137,18 +143,19 @@ def _enforce_min_display(cues: list[dict], cfg) -> list[dict]:
     return out
 
 
-def _deisolate_boundaries(cues: list[dict], cfg) -> list[dict]:
+def _deisolate_boundaries(cues: list[dict], cfg, merge_head: bool = True, merge_tail: bool = True) -> list[dict]:
     """Merge a first/last cue of only 1-2 words split off by gap >= ISOLATION_GAP (boundary
-    misalignment at file start/end) into the neighbor, dropping the off timestamp. Only if result stays <= 2 lines <= CPL."""
+    misalignment at file start/end) into the neighbor, dropping the off timestamp. Only if result stays <= 2 lines <= CPL.
+    merge_head / merge_tail = False keeps that end's cue where it is (the caller knows it is real text at its own time)."""
     if len(cues) < 2:
         return cues
     cues = [dict(c) for c in cues]
-    if (len(cues[0]["text"].split()) <= 2
+    if (merge_head and len(cues[0]["text"].split()) <= 2
             and (cues[1]["start"] - cues[0]["end"]) >= cfg.ISOLATION_GAP
             and _fits_lines(cues[0]["text"] + " " + cues[1]["text"], cfg)):
         cues[1]["text"] = cues[0]["text"] + " " + cues[1]["text"]
         cues = cues[1:]
-    if (len(cues) >= 2 and len(cues[-1]["text"].split()) <= 2
+    if (merge_tail and len(cues) >= 2 and len(cues[-1]["text"].split()) <= 2
             and (cues[-1]["start"] - cues[-2]["end"]) >= cfg.ISOLATION_GAP
             and _fits_lines(cues[-2]["text"] + " " + cues[-1]["text"], cfg)):
         cues[-2]["text"] = cues[-2]["text"] + " " + cues[-1]["text"]
@@ -156,7 +163,8 @@ def _deisolate_boundaries(cues: list[dict], cfg) -> list[dict]:
     return cues
 
 
-def build_cues(words: list[dict], cfg=config) -> list[dict]:
+def build_cues(words: list[dict], cfg=config, merge_head: bool = True, merge_tail: bool = True,
+               max_back_gap: float | None = None) -> list[dict]:
     if not words:
         return []
     words = fill_word_times(words)
@@ -164,8 +172,8 @@ def build_cues(words: list[dict], cfg=config) -> list[dict]:
     for seg in _split_segments(words, cfg):
         for group in _segment_to_cues(seg, cfg):
             raw.append(_make_cue(group))
-    cues = _enforce_min_display(raw, cfg)
-    cues = _deisolate_boundaries(cues, cfg)
+    cues = _enforce_min_display(raw, cfg, max_back_gap)
+    cues = _deisolate_boundaries(cues, cfg, merge_head, merge_tail)
     for c in cues:
         c["text"] = wrap_two_lines(c["text"], cfg.CPL_MAX)
     return cues

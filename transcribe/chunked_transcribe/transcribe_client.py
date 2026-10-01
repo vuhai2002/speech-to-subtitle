@@ -99,9 +99,11 @@ def transcribe_once(mp3_path: str, prompt: str, req_path: str, raw_path: str) ->
     return res
 
 
-# Gemini's safety filter answers some chunks with a fixed refusal streamed as ordinary content and no
-# finish_reason ("This request was blocked by Gemini's filters. ..."). It is deterministic for the same
-# audio, so retrying the same chunk never helps.
+# Gemini's safety filter blocks a chunk in two forms: a fixed refusal streamed as ordinary content with no
+# finish_reason ("This request was blocked by Gemini's filters. ..."), or a stop with finish_reason
+# "content_filter" (sometimes after a partial transcript). A block is retried like any other failure: the
+# filter does not always refuse the same audio twice. What happens after the last try is decided by
+# run_pipeline._process_chunk (MAI for a chunk with speech, left empty for a chunk VAD hears as silent).
 FILTER_BLOCK_MARKER = "blocked by gemini's filters"
 BLOCKED_REASON = "blocked by Gemini filters"
 
@@ -109,9 +111,12 @@ BLOCKED_REASON = "blocked by Gemini filters"
 def is_filter_block(res: dict) -> bool:
     """True when the reply is Gemini's filter refusal rather than a transcript.
 
-    Both conditions are required, so a real transcript that happens to contain these words (and ends
-    normally with finish_reason=stop) is never mistaken for a block.
+    Two forms: a stop with finish_reason "content_filter" (a partial transcript), or the fixed refusal text
+    with no finish_reason. The text form needs both conditions, so a real transcript that happens to contain
+    these words (and ends normally with finish_reason=stop) is never mistaken for a block.
     """
+    if res.get("finish") == "content_filter":
+        return True
     text = (res.get("text") or "").lower().replace("\u2019", "'")
     return not res.get("finish") and FILTER_BLOCK_MARKER in text
 
@@ -141,23 +146,62 @@ def guard_reasons(res: dict, speech_sec: float) -> list[str]:
     return reasons + text_reasons(res["text"], speech_sec)
 
 
-def transcribe_with_retry(mp3_path: str, prompt: str, speech_sec: float, req_path: str, raw_path: str) -> dict:
-    """Call + retry up to MAX_ATTEMPTS on failure. On 403 (account locked) or a Gemini filter block, STOP
-    immediately, no retry: both are deterministic.
+def _try_record(n: int, res: dict, reasons: list[str], blocked: bool, locked: bool, wait_sec: float) -> dict:
+    """One entry of a chunk's try history, kept in manifest.json and run_trace.json so a run can be audited
+    without running it again. The text of a try is not kept: only the chunk's final text is."""
+    if locked:
+        outcome = "403"
+    elif blocked:
+        outcome = "blocked"
+    elif not reasons:
+        outcome = "ok"
+    elif res.get("errors"):
+        outcome = "error"
+    elif any(r.startswith("low word density") for r in reasons):
+        outcome = "low density"
+    elif not (res.get("text") or "").strip():
+        outcome = "empty"
+    else:
+        outcome = "error"
+    detail = "; ".join(reasons)
+    if res.get("errors"):
+        errors = json.dumps(res["errors"], ensure_ascii=False)
+        detail = f"{detail} | {errors}" if detail else errors
+    return {"n": n, "engine": "gemini", "http": res.get("http") or "", "finish": res.get("finish") or "",
+            "words": 0 if blocked or locked else len((res.get("text") or "").split()),
+            "served_model": res.get("served_model") or "", "outcome": outcome, "detail": detail[:200],
+            "wait_sec": round(wait_sec, 1)}
 
-    Returns: {res, attempts, reasons, locked, blocked}. locked=True means the account got a 403 -> the whole
-    file should stop; blocked=True means Gemini's safety filter refused this chunk (see is_filter_block).
+
+def transcribe_with_retry(mp3_path: str, prompt: str, speech_sec: float, req_path: str, raw_path: str) -> dict:
+    """Call + retry up to MAX_ATTEMPTS on any failure, a Gemini filter block included. On 403 (account
+    locked) STOP immediately, no retry.
+
+    Returns: {res, attempts, reasons, locked, blocked, history}. locked=True means the account got a 403 -> the
+    whole file should stop; blocked=True means no try succeeded and at least one was a Gemini filter block (see
+    is_filter_block) - a transient error on a later try does not hide that the only real answers were blocks;
+    history has one _try_record per try.
     """
-    res, reasons = {}, []
+    res, reasons, ever_blocked, history = {}, [], False, []
     for att in range(1, config.MAX_ATTEMPTS + 1):
         res = transcribe_once(mp3_path, prompt, req_path, raw_path)
         if _is_403(res):
-            return {"res": res, "attempts": att, "reasons": ["403 account locked"], "locked": True, "blocked": False}
-        if is_filter_block(res):
-            return {"res": res, "attempts": att, "reasons": [BLOCKED_REASON], "locked": False, "blocked": True}
-        reasons = guard_reasons(res, speech_sec)
+            history.append(_try_record(att, res, ["403 account locked"], False, True, 0.0))
+            return {"res": res, "attempts": att, "reasons": ["403 account locked"], "locked": True,
+                    "blocked": False, "history": history}
+        blocked = is_filter_block(res)
+        ever_blocked = ever_blocked or blocked
+        reasons = [BLOCKED_REASON] if blocked else guard_reasons(res, speech_sec)
+        wait = 0.0
+        if reasons and att < config.MAX_ATTEMPTS:
+            wait = wait_seconds(att, config.RETRY_BACKOFF_SEC, res.get("http"), res.get("retry_after"))
+        history.append(_try_record(att, res, reasons, blocked, False, wait))
         if not reasons:
-            return {"res": res, "attempts": att, "reasons": [], "locked": False, "blocked": False}
-        if att < config.MAX_ATTEMPTS:
-            time.sleep(wait_seconds(att, config.RETRY_BACKOFF_SEC, res.get("http"), res.get("retry_after")))
-    return {"res": res, "attempts": config.MAX_ATTEMPTS, "reasons": reasons, "locked": False, "blocked": False}
+            return {"res": res, "attempts": att, "reasons": [], "locked": False, "blocked": False,
+                    "history": history}
+        if wait > 0:
+            time.sleep(wait)
+    if ever_blocked:
+        reasons = [BLOCKED_REASON]
+    return {"res": res, "attempts": config.MAX_ATTEMPTS, "reasons": reasons, "locked": False,
+            "blocked": ever_blocked, "history": history}

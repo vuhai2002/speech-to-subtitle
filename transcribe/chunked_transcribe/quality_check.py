@@ -68,7 +68,9 @@ def check(out_dir: str) -> dict:
     plan = json.loads((out / "plan.json").read_text(encoding="utf-8"))
     manifest = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
     segs_all = plan["segments"]
-    included = [m for m in manifest if m["included"]]
+    # A chunk VAD hears as silent is judged by build_srt's sentence scores; the omission and hallucination
+    # rules here assume VAD speech, so they would flag every one of its words.
+    included = [m for m in manifest if m["included"] and not m.get("silent")]
     print(f"{time.strftime('%H:%M:%S')} self-check {len(included)} chunks (MMS + star token)", flush=True)
     models = get_models("cuda")
 

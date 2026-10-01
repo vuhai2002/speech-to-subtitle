@@ -28,9 +28,31 @@ MIN_CHUNK_SEC = 300.0           # two consecutive cut points are at least this f
 CONCURRENCY = int(os.getenv("ROUTER_WORKERS", "3"))
 MAX_ATTEMPTS = 3                # retries per chunk on error/empty/finish!=stop/low density
 RETRY_BACKOFF_SEC = 8.0         # base pause between retries; doubles per attempt with jitter (transcribe/retry_wait.py)
-MIN_SPEECH_CHUNK_SEC = 30.0     # a chunk with less speech than this MAY be dropped (avoids hallucinating over music/silence)
+MIN_SPEECH_CHUNK_SEC = 30.0     # below this (and MIN_SPEECH_RATIO) VAD calls a chunk silent: its text is kept only where MMS scores it well
 MIN_SPEECH_RATIO = 0.5          # ...unless speech fills at least this fraction of the chunk (keeps short, speech-dominated clips)
 MIN_WORDS_PER_SPEECH_MIN = 60.0 # lower word density -> treated as an error, retry (catches a status message instead of a transcript)
+
+
+# Mean MMS word score a sentence from a chunk VAD hears as silent needs to be kept as a subtitle line; lower
+# sentences are dropped. 0.5 is the admin's choice (2026-10-01): in 41 passages the admin heard on
+# 2026-09-29, every one scoring >= 0.457 was right and the highest wrong one scored 0.397.
+def _silent_min_score(raw: str | None) -> float:
+    """Parse SILENT_MIN_SCORE: strip whitespace, accept a comma decimal ("0,5"); empty or unset keeps 0.5.
+    Anything that is not a number in (0, 1] is rejected loudly: a silently ignored bad value would misjudge
+    every silent chunk of the run."""
+    raw = (raw or "").strip()
+    if not raw:
+        return 0.5
+    try:
+        value = float(raw.replace(",", ".", 1))
+    except ValueError:
+        value = None
+    if value is None or not (0 < value <= 1):
+        raise ValueError(f"SILENT_MIN_SCORE must be a number greater than 0 and at most 1, got '{raw}'")
+    return value
+
+
+SILENT_MIN_SCORE = _silent_min_score(os.getenv("SILENT_MIN_SCORE"))
 
 # --- self-check (quality_check, pure code, grounded in the audio) ---
 STAR_EVERY_WORD = False         # insert a '*' token after punctuation (False) or after every word (True)

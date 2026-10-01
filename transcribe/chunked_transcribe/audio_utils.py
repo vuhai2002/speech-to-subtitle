@@ -41,8 +41,9 @@ def speech_in(segs: list[list[float]], a: float, b: float) -> float:
 
 
 def chunk_has_speech(chunk: dict) -> bool:
-    """True if a chunk holds real speech and should be transcribed/merged; False if it is
-    (near-)silence where the model would likely hallucinate.
+    """True if a chunk holds real speech (its text is merged as is); False if VAD hears (near-)silence there,
+    where a model may hallucinate: the MAI path drops such a chunk's text, the Router path keeps only the
+    sentences MMS aligns well (build_srt + silent_scoring).
 
     A chunk qualifies when it has at least MIN_SPEECH_CHUNK_SEC of detected speech, OR when
     speech fills at least MIN_SPEECH_RATIO of its own length. The ratio keeps short clips: a
@@ -57,7 +58,8 @@ def chunk_has_speech(chunk: dict) -> bool:
 def build_plan(mono16k_path: str, dur: float, segs: list[list[float]]) -> list[dict]:
     """Split into ~CHUNK_TARGET_SEC chunks, cutting at the LONGEST SILENCE near the target mark.
 
-    Each chunk: {idx, start, end, speech_sec, cut_gap_sec}. speech_sec is used to drop chunks with no speech.
+    Each chunk: {idx, start, end, speech_sec, cut_gap_sec}. speech_sec decides whether VAD calls the chunk silent
+    (chunk_has_speech).
     """
     gaps = [(segs[i][1], segs[i + 1][0]) for i in range(len(segs) - 1)]
     cuts = [0.0]

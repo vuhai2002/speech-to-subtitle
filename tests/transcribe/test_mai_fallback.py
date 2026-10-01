@@ -1,5 +1,8 @@
-"""A chunk Gemini's filter refuses is transcribed by MAI when a key is set; otherwise it fails like before."""
+"""A chunk with speech that Gemini's filter still refuses after the retries is transcribed by MAI when a key is set;
+otherwise it fails like before. A chunk VAD hears as silent is never sent to MAI."""
 import threading
+
+import pytest
 
 from transcribe.chunked_transcribe import mai_fallback, run_pipeline
 
@@ -43,6 +46,7 @@ def test_blocked_chunk_is_transcribed_by_mai(monkeypatch, tmp_path, capsys):
     line = capsys.readouterr().out
     assert line.startswith("    chunk 07 ")
     assert line.rstrip().endswith("MERGED | MAI (gemini blocked)")
+    assert rec["mai"] == {"outcome": "ok", "reason": "", "words": len(MAI_TEXT.split()), "cost": None}
 
 
 def test_blocked_chunk_without_key_fails_and_never_calls_mai(monkeypatch, tmp_path):
@@ -51,6 +55,7 @@ def test_blocked_chunk_without_key_fails_and_never_calls_mai(monkeypatch, tmp_pa
     assert rec["included"] is False and "engine" not in rec
     assert rec["note"] == "error after retry: blocked by Gemini filters; no OpenRouter key for the MAI fallback"
     assert calls == []
+    assert rec["mai"] == {"outcome": "failed", "reason": "no OpenRouter key for the MAI fallback", "words": 0, "cost": None}
 
 
 def test_mai_error_keeps_the_chunk_failed(monkeypatch, tmp_path):
@@ -88,12 +93,14 @@ def test_mai_text_too_sparse_for_the_speech_keeps_the_chunk_failed(monkeypatch, 
     assert rec["note"].startswith("error after retry: blocked by Gemini filters; MAI fallback failed: low word density")
 
 
-def test_blocked_chunk_without_speech_follows_the_speech_rule(monkeypatch, tmp_path):
+def test_blocked_chunk_without_speech_is_left_empty_and_never_billed_to_mai(monkeypatch, tmp_path):
+    # A chunk VAD calls silent that Gemini still blocks has no teaching to rescue: MAI would bill and its
+    # text would only be scored away, so the chunk is left empty (a warning, not a failure).
     calls = _setup(monkeypatch, tmp_path)
     rec = _process(tmp_path, {**CHUNK, "speech_sec": 0.0})
-    assert rec["included"] is False and rec["engine"] == "mai"
-    assert rec["note"] == "fabricated (chunk has no speech but returned words)"
-    assert calls[0][2] is False           # MAI is not asked to find speech in a chunk VAD calls silent
+    assert rec["included"] is False and "engine" not in rec
+    assert rec["note"] == "silent blocked: gemini filters refused a chunk without speech"
+    assert calls == [] and rec["mai"] is None
 
 
 def test_mai_expect_speech_uses_geminis_short_chunk_exemption(monkeypatch, tmp_path):
@@ -127,3 +134,24 @@ def test_non_blocked_failure_never_calls_mai(monkeypatch, tmp_path):
     assert rec["included"] is False and "engine" not in rec
     assert rec["note"] == "error after retry: http=500"
     assert calls == []
+
+
+def test_mai_cost_is_kept_when_its_text_is_rejected(monkeypatch, tmp_path):
+    # MAI billed for an empty reply on a chunk with speech: the chunk fails, but the trace still shows the cost.
+    _setup(monkeypatch, tmp_path, mai_result={"res": {"text": "", "cost": 0.02}, "attempts": 1, "reasons": []})
+    rec = _process(tmp_path)
+    assert rec["included"] is False
+    assert rec["mai"] == {"outcome": "failed", "reason": "MAI fallback failed: empty despite speech present",
+                          "words": 0, "cost": 0.02}
+
+
+def test_mai_client_sums_the_cost_of_every_attempt(monkeypatch):
+    # An empty reply is billed and retried: the cost of the whole fallback is the sum, not the last attempt.
+    from transcribe.mai_transcribe import transcribe_client as mai
+    replies = iter([{"text": "", "http": "200", "cost": 0.01}, {"text": "lời giảng", "http": "200", "cost": 0.02}])
+    monkeypatch.setattr(mai, "transcribe_once", lambda *a, **k: next(replies))
+    monkeypatch.setattr(mai.time, "sleep", lambda s: None)
+    r = mai.transcribe_with_retry("x.mp3", "raw.json", expect_speech=True)
+    assert r["reasons"] == [] and r["attempts"] == 2
+    assert r["cost"] == pytest.approx(0.03)
+

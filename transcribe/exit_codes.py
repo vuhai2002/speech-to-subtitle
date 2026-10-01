@@ -3,7 +3,8 @@
 0  done.
 3  INCOMPLETE: at least one chunk failed every retry or hit a 403. manifest.json is still written
    and names the chunks; the transcript has a hole and must not become a subtitle.
-4  NO_ALIGNED_WORDS: no word got a timestamp / no cue could be built. No .srt is written.
+4  NO_ALIGNED_WORDS: no word got a timestamp / no cue could be built / (Router build_srt) a merged chunk with
+   speech has no word MMS can align. No .srt is written.
 """
 OK = 0
 INCOMPLETE = 3
