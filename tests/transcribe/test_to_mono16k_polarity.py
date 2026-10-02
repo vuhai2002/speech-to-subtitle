@@ -101,6 +101,17 @@ def test_mono_first_stream_is_the_one_converted(tmp_path):
     assert all(v > -40 for v in mono_levels(dst)[:4])
 
 
+def test_unreadable_channel_count_is_still_analysed(tmp_path, monkeypatch):
+    x = speech_like(8)
+    monkeypatch.setattr(audio_utils, "_channels", lambda src: 0)     # ffprobe printed nothing (an old or failing probe)
+    dst = tmp_path / "mono16k.mp3"
+    audio_utils.to_mono16k(write(tmp_path / "src.wav", x, -x), str(dst))
+    s = summary_of(tmp_path)
+    assert (s["channels"], s["sections"], s["check"]) == (0, [[0.0, None]], "passed")   # the probed value is recorded
+    levels = mono_levels(dst)
+    assert all(v > -40 for v in levels), levels
+
+
 def mono_gain_db(folder, peak: float) -> float:
     """Level of the mono mp3 that to_mono16k writes, in dB against one source channel, for an s16 file holding the same
     300 Hz sine of this peak in both channels. Decoded as float so a mix above full scale is not clipped here."""

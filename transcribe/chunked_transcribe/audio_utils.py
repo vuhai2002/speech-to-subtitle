@@ -55,14 +55,16 @@ def _save_polarity(dst: str, record: dict) -> None:
 def to_mono16k(src: str, dst: str) -> float:
     """ffmpeg: any audio -> mp3 mono 16kHz, polarity-aware. Returns the duration (seconds).
 
-    A 2-channel source is measured in the same pass that writes the mono file; sections where its channels are
+    Any source that is not single-channel is measured in the same pass that writes the mono file: more than two
+    channels are downmixed to stereo first, and a channel count ffprobe cannot read is treated the same way (a true
+    mono file just upmixes), so a weak probe never skips the check. Sections where the channels are
     polarity-inverted (polarity.find_sections) are flipped in a second pass. Writes polarity.json next to dst.
     Raises polarity.AudioCancelled when the result still cancels the voice (the caller exits with
     exit_codes.AUDIO_CANCELLED); ffmpeg failures raise CalledProcessError and write no summary."""
     rate = str(config.SAMPLE_RATE)
     (Path(dst).parent / POLARITY_FILE).unlink(missing_ok=True)
     channels = _channels(src)
-    if channels < 2:
+    if channels == 1:      # only a probed single-channel source skips the check; 0 (unreadable) and 2+ are analysed
         # -map 0:a:0 is the stream _channels probed; without it ffmpeg may pick another audio stream
         subprocess.run(["ffmpeg", "-y", "-v", "error", "-nostdin", "-i", src, "-map", "0:a:0", "-ac", "1",
                         "-ar", rate, dst], check=True)
