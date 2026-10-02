@@ -1,21 +1,88 @@
 """Pure-code audio utilities: decode to mono 16kHz, run VAD, plan chunk cuts at silences."""
 import json
 import subprocess
+import tempfile
 from pathlib import Path
 
 import numpy as np
 import soundfile as sf
 
-from . import config
+from . import config, polarity
+
+POLARITY_FILE = "polarity.json"
+# Explicit mono gain: what `-ac 1` gives a float-decoded source (AAC/MP3) today, now independent of the sample format.
+MONO_MIX = "pan=mono|c0=0.7071*c0+0.7071*c1"
+
+
+def _channels(src: str) -> int:
+    out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=channels",
+                          "-of", "csv=p=0", src], capture_output=True, text=True).stdout.strip()
+    return int(out.split(",")[0]) if out else 0
+
+
+def _duration(path: str) -> float:
+    out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                          "-of", "csv=p=0", path], capture_output=True, text=True).stdout
+    return float(out.strip())
+
+
+def _run_ffmpeg_with_pcm(args: list[str]) -> polarity.Stats:
+    """Runs ffmpeg whose `pipe:1` output is s16le stereo at polarity.ANALYSIS_RATE; returns its statistics."""
+    acc = polarity.StatsAccumulator()
+    # Popen as a context manager closes the pipe on every path, so ffmpeg never stays blocked on a pipe nobody reads.
+    with tempfile.TemporaryFile() as err, subprocess.Popen(
+            ["ffmpeg", "-y", "-v", "error", "-nostdin", *args], stdout=subprocess.PIPE, stderr=err) as p:
+        while chunk := p.stdout.read(65536):
+            acc.feed(chunk)
+        if p.wait() != 0:
+            err.seek(0)
+            raise subprocess.CalledProcessError(p.returncode, "ffmpeg",
+                                                stderr=err.read().decode("utf-8", errors="replace"))
+    return acc.finish()
+
+
+def _pcm_out() -> list[str]:
+    return ["-f", "s16le", "-acodec", "pcm_s16le", "pipe:1"]
+
+
+def _save_polarity(dst: str, record: dict) -> None:
+    (Path(dst).parent / POLARITY_FILE).write_text(json.dumps(record), encoding="utf-8")
 
 
 def to_mono16k(src: str, dst: str) -> float:
-    """ffmpeg: any audio -> mp3 mono 16kHz. Returns the duration (seconds)."""
-    subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", src, "-ac", "1", "-ar",
-                    str(config.SAMPLE_RATE), dst], check=True)
-    out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
-                          "-of", "csv=p=0", dst], capture_output=True, text=True).stdout
-    return float(out.strip())
+    """ffmpeg: any audio -> mp3 mono 16kHz, polarity-aware. Returns the duration (seconds).
+
+    A 2-channel source is measured in the same pass that writes the mono file; sections where its channels are
+    polarity-inverted (polarity.find_sections) are flipped in a second pass. Writes polarity.json next to dst.
+    Raises polarity.AudioCancelled when the result still cancels the voice (the caller exits with
+    exit_codes.AUDIO_CANCELLED); ffmpeg failures raise CalledProcessError and write no summary."""
+    rate = str(config.SAMPLE_RATE)
+    (Path(dst).parent / POLARITY_FILE).unlink(missing_ok=True)
+    channels = _channels(src)
+    if channels < 2:
+        subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", src, "-ac", "1", "-ar", rate, dst], check=True)
+        _save_polarity(dst, polarity.summary(channels, [], "skipped: mono source"))
+        return _duration(dst)
+    stats = _run_ffmpeg_with_pcm([
+        "-i", src, "-filter_complex",
+        f"[0:a:0]aformat=channel_layouts=stereo,asplit=2[m0][a];[m0]{MONO_MIX}[m];"
+        f"[a]aresample={polarity.ANALYSIS_RATE}[an]",
+        "-map", "[m]", "-ar", rate, dst, "-map", "[an]", *_pcm_out()])
+    sections = polarity.find_sections(stats)
+    louder = np.maximum(polarity.db(stats.left), polarity.db(stats.right))
+    mix = polarity.db(stats.mix)
+    if sections:
+        subprocess.run(["ffmpeg", "-y", "-v", "error", "-nostdin", "-i", src, "-filter_complex",
+                        f"[0:a:0]aformat=channel_layouts=stereo,{polarity.flip_filter(sections)},{MONO_MIX}[m]",
+                        "-map", "[m]", "-ar", rate, dst], check=True)
+        mix = polarity.db(_run_ffmpeg_with_pcm(
+            ["-i", dst, "-ac", "2", "-ar", str(polarity.ANALYSIS_RATE), *_pcm_out()]).left)
+    n = min(len(mix), len(louder))
+    stretches = polarity.cancelled_stretches(mix[:n], louder[:n])
+    _save_polarity(dst, polarity.summary(channels, sections, "failed" if stretches else "passed", stretches))
+    if stretches:
+        raise polarity.AudioCancelled(stretches)
+    return _duration(dst)
 
 
 def cut_chunk(src_mono16k: str, start: float, end: float, dst: str) -> None:

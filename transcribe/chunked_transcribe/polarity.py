@@ -1,4 +1,4 @@
-"""Polarity-aware mono mixdown; the desktop and web apps implement the same rule with the same constants.
+"""Polarity-aware mono mixdown; the desktop and web apps must keep the same rule and thresholds.
 
 A source whose two channels are polarity-inverted (one is the negative of the other) cancels to near silence when it
 is mixed to mono, and a lecture can be inverted in only part of it. This module finds the inverted SECTIONS second by
@@ -110,7 +110,8 @@ def flip_filter(sections: list[tuple[float, float | None]]) -> str:
     """Filter for a named stereo stream: the right channel times -1 inside the sections, linear RAMP_SEC ramps at
     inner edges; pan re-names the layout (aeval leaves an unnamed "2 channels" layout the encoders reject). The ramps
     use n/s (samples counted from the first sample, the timeline the statistics use), never t, which starts at the
-    stream's start time."""
+    stream's start time. n restarts at 0 when ffmpeg rebuilds the filter graph on a mid-stream sample-rate or layout
+    change, which mis-times the flips after it; the output check then refuses the file."""
     h = RAMP_SEC / 2
     terms = []
     for start, end in sections:
@@ -147,3 +148,42 @@ def summary(channels: int, sections: list[tuple[float, float | None]], check: st
     """The polarity.json / run_trace.json "polarity" record."""
     return {"channels": channels, "sections": [[a, b] for a, b in sections], "check": check,
             "cancelled": [[a, b] for a, b in stretches]}
+
+
+class StatsAccumulator:
+    """Builds Stats from interleaved s16le stereo PCM at `rate`, fed in chunks of any size (a frame or even a
+    sample may be split across chunks). One second at a time is reduced, so a 2-hour file needs no big buffer."""
+
+    def __init__(self, rate: int = ANALYSIS_RATE):
+        self.rate = rate
+        self.block = int(round(rate * BLOCK_SEC))
+        self._rest = b""
+        self._frames = np.zeros((0, 2))
+        self._sec: list[tuple[float, float, float, float]] = []
+        self._blocks: list[float] = []
+
+    def feed(self, pcm: bytes) -> None:
+        data = self._rest + pcm
+        usable = len(data) // 4 * 4
+        self._rest = data[usable:]
+        if usable:
+            x = np.frombuffer(data[:usable], dtype="<i2").astype(np.float64).reshape(-1, 2) / 32768.0
+            self._frames = np.concatenate([self._frames, x])
+        while len(self._frames) >= self.rate:
+            self._reduce(self._frames[:self.rate])
+            self._frames = self._frames[self.rate:]
+
+    def _reduce(self, x: np.ndarray) -> None:
+        left, right = x[:, 0], x[:, 1]
+        self._sec.append((float(np.mean(left ** 2)), float(np.mean(right ** 2)),
+                          float(np.mean(((left + right) / 2) ** 2)), float(np.mean(((left - right) / 2) ** 2))))
+        for i in range(0, len(x), self.block):
+            b = x[i:i + self.block]
+            self._blocks.append(float(np.mean(b ** 2)))
+
+    def finish(self) -> Stats:
+        if len(self._frames):
+            self._reduce(self._frames)
+            self._frames = np.zeros((0, 2))
+        a = np.array(self._sec, dtype=np.float64).reshape(-1, 4)
+        return Stats(left=a[:, 0], right=a[:, 1], mix=a[:, 2], diff=a[:, 3], blocks=np.array(self._blocks))
