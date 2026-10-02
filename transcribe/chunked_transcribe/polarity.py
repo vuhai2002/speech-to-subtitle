@@ -110,8 +110,9 @@ def flip_filter(sections: list[tuple[float, float | None]]) -> str:
     """Filter for a named stereo stream: the right channel times -1 inside the sections, linear RAMP_SEC ramps at
     inner edges; pan re-names the layout (aeval leaves an unnamed "2 channels" layout the encoders reject). The ramps
     use n/s (samples counted from the first sample, the timeline the statistics use), never t, which starts at the
-    stream's start time. n restarts at 0 when ffmpeg rebuilds the filter graph on a mid-stream sample-rate or layout
-    change, which mis-times the flips after it; the output check then refuses the file."""
+    stream's start time. n restarts at 0 when ffmpeg rebuilds the filter graph on a mid-stream sample-rate,
+    sample-format or layout change, which delays every later flip by the time of the rebuild; the output check
+    refuses the file once that cancels CHECK_MIN_SEC or more signal seconds."""
     h = RAMP_SEC / 2
     terms = []
     for start, end in sections:
