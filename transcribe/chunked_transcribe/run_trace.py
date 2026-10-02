@@ -1,7 +1,8 @@
 """run_trace.json: one file that tells everything a run did, so a run never has to be repeated to be audited.
 
 run_pipeline writes it at the end of every run, complete or not: the run metadata, the VAD segments and, per
-chunk, every Gemini try with its outcome, the MAI fallback result and the final text. build_srt adds the
+chunk, every Gemini try with its outcome, the MAI fallback result and the final text, plus the optional
+"polarity" record of the mono mixdown (the sections of the source flipped, see polarity.py). build_srt adds the
 alignment results, every sentence's score for chunks VAD hears as silent, and the cue summary (add_build).
 The desktop app adds its own "app" section and archives the file. Times are seconds from the start of the
 input file. Schema version 1.
@@ -58,8 +59,10 @@ def chunk_entry(rec: dict, text: str) -> dict:
 
 
 def new_trace(*, input_path: str, duration_sec: float, prompt: str, segments: list, manifest: list[dict],
-              texts: dict[int, str], started_at: str, mai_enabled: bool) -> dict:
-    return {
+              texts: dict[int, str], started_at: str, mai_enabled: bool, polarity: dict | None = None) -> dict:
+    """The trace of a finished run_pipeline run. `polarity` is the record to_mono16k left in polarity.json (which
+    sections of the source were flipped before the mixdown); a trace without it has no "polarity" key."""
+    trace = {
         "version": VERSION,
         "meta": {
             "mode": "full", "input": Path(input_path).name, "duration_sec": round(duration_sec, 3),
@@ -73,6 +76,9 @@ def new_trace(*, input_path: str, duration_sec: float, prompt: str, segments: li
         "vad": {"speech_sec": round(sum(e - s for s, e in segments), 1), "segments": segments},
         "chunks": [chunk_entry(m, texts.get(m["idx"], "")) for m in manifest],
     }
+    if polarity is not None:
+        trace["polarity"] = polarity
+    return trace
 
 
 def add_build(trace: dict, results: dict[int, dict], summary: dict) -> dict:

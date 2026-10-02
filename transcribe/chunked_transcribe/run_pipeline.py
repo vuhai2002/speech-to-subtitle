@@ -2,6 +2,7 @@
 
 Output (no AI):
   <out>/mono16k.mp3, <out>/plan.json
+  <out>/polarity.json        polarity check of the mono mixdown: sections of the source flipped, output check (audio_utils.py)
   <out>/chunks/NN.mp3, <out>/chunks/NN.txt
   <out>/raw_transcript.txt   merged transcript of the chunks with speech (a silent chunk's text is scored later by build_srt)
   <out>/manifest.json        per-chunk status + guard
@@ -10,6 +11,7 @@ Output (no AI):
 Processes config.CONCURRENCY chunks in parallel (default 3). Each chunk retries up to MAX_ATTEMPTS on failure.
 On 403 (account locked): soft stop - mark the chunk as not transcribed, report the file as incomplete
 (exit code 3, see transcribe/exit_codes.py).
+If the mono mix still cancels the voice after the polarity flip, nothing is transcribed (exit code 5).
 Chunks are independent, so they are merged back in order once done.
 """
 import argparse
@@ -21,7 +23,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 
-from . import audio_utils, config, mai_fallback, run_trace, transcribe_client
+from . import audio_utils, config, mai_fallback, polarity, run_trace, transcribe_client
 from transcribe import exit_codes
 
 
@@ -112,6 +114,10 @@ def run(input_path: str, out_dir: str, prompt_file: str | None = None) -> dict:
     mono = str(out / "mono16k.mp3")
     print(f"{_now()} [1/4] ffmpeg -> mono 16kHz", flush=True)
     dur = audio_utils.to_mono16k(input_path, mono)
+    pol_file = out / audio_utils.POLARITY_FILE
+    pol = json.loads(pol_file.read_text(encoding="utf-8")) if pol_file.exists() else None
+    if pol and pol["sections"]:
+        print(f"    polarity: {len(pol['sections'])} inverted section(s) flipped before the mixdown", flush=True)
     print(f"{_now()} [2/4] VAD + plan cuts", flush=True)
     segs = audio_utils.speech_segments(mono)
     plan = audio_utils.build_plan(mono, dur, segs)
@@ -138,7 +144,7 @@ def run(input_path: str, out_dir: str, prompt_file: str | None = None) -> dict:
     (out / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=1), encoding="utf-8")
     run_trace.save(out, run_trace.new_trace(
         input_path=input_path, duration_sec=dur, prompt=prompt, segments=segs, manifest=manifest, texts=texts,
-        started_at=started_at, mai_enabled=bool(mai_fallback.mai_config.API_KEY)))
+        started_at=started_at, mai_enabled=bool(mai_fallback.mai_config.API_KEY), polarity=pol))
     total_words = sum(len(t.split()) for m, t in included if not m.get("silent"))   # the words of raw_transcript.txt
     n_silent = sum(1 for m, _ in included if m.get("silent"))
     if locked:
@@ -165,7 +171,11 @@ def main():
     if a.workers:
         config.CONCURRENCY = a.workers
     t0 = time.time()
-    res = run(a.input, a.out_dir, a.prompt_file)
+    try:
+        res = run(a.input, a.out_dir, a.prompt_file)
+    except polarity.AudioCancelled as e:
+        print(f"AUDIO_CANCELLED: {e}", file=sys.stderr, flush=True)
+        sys.exit(exit_codes.AUDIO_CANCELLED)
     print(f"total time {time.time() - t0:.0f}s")
     bad = sorted(set(res["failed"]) | set(res["locked"]))
     if bad:

@@ -53,6 +53,20 @@ def test_new_trace_records_meta_vad_and_chunks(monkeypatch):
     assert t["chunks"][0]["text"] == "lời" and t["chunks"][0]["vad"] == "speech"
 
 
+def test_trace_carries_the_polarity_record():
+    p = {"channels": 2, "sections": [[0.0, 4559.95]], "check": "passed", "cancelled": []}
+    t = run_trace.new_trace(input_path="D:/x/bai.m4a", duration_sec=600.0, prompt="abc", segments=[[0.5, 4.5]],
+                            manifest=[], texts={}, started_at="2026-10-02T00:00:00+07:00", mai_enabled=False,
+                            polarity=p)
+    assert t["polarity"] == p
+
+
+def test_trace_without_polarity_has_no_key():
+    t = run_trace.new_trace(input_path="D:/x/bai.m4a", duration_sec=600.0, prompt="abc", segments=[],
+                            manifest=[], texts={}, started_at="2026-10-02T00:00:00+07:00", mai_enabled=False)
+    assert "polarity" not in t
+
+
 def test_write_then_read_round_trips_and_a_missing_or_bad_file_reads_as_none(tmp_path):
     run_trace.write(tmp_path, {"version": 1, "chunks": [{"idx": 1, "text": "Nam mô"}]})
     assert run_trace.read(tmp_path) == {"version": 1, "chunks": [{"idx": 1, "text": "Nam mô"}]}
@@ -130,3 +144,47 @@ def test_a_trace_that_cannot_be_written_never_changes_the_run_outcome(monkeypatc
     res = run_pipeline.run("x/bai.m4a", str(out))
     assert res["failed"] == [] and (out / "manifest.json").exists()
     assert "run_trace.json" in capsys.readouterr().err
+
+
+def _run_one_chunk(monkeypatch, tmp_path, polarity_record):
+    """run() on a one-chunk stub whose to_mono16k leaves `polarity_record` in polarity.json (nothing when None).
+    Returns the run_trace.json it wrote."""
+    out = tmp_path / "out"
+
+    def fake_mono(src, dst):
+        if polarity_record is not None:
+            (out / run_pipeline.audio_utils.POLARITY_FILE).write_text(json.dumps(polarity_record), encoding="utf-8")
+        return 600.0
+
+    def fake_process(c, out_dir, mono, prompt, lock):
+        (out_dir / "chunks" / "01.txt").write_text("lời giảng.", encoding="utf-8")
+        return {**c, "included": True, "locked": False, "silent": False, "note": "", "words": 2, "history": [],
+                "mai": None}
+
+    monkeypatch.setattr(run_pipeline.audio_utils, "to_mono16k", fake_mono)
+    monkeypatch.setattr(run_pipeline.audio_utils, "speech_segments", lambda p: [[1.0, 400.0]])
+    monkeypatch.setattr(run_pipeline.audio_utils, "build_plan", lambda p, d, s: [
+        {"idx": 1, "start": 0.0, "end": 600.0, "speech_sec": 399.0, "cut_gap_sec": None}])
+    monkeypatch.setattr(run_pipeline.config, "load_prompt", lambda f=None: "prompt")
+    monkeypatch.setattr(run_pipeline, "_process_chunk", fake_process)
+    monkeypatch.setattr(run_trace, "git_commit", lambda: "abc1234")
+    run_pipeline.run("x/bai.m4a", str(out))
+    return run_trace.read(out)
+
+
+def test_run_copies_the_polarity_record_into_the_trace_and_logs_the_flip(monkeypatch, tmp_path, capsys):
+    record = {"channels": 2, "sections": [[0.0, 59.95], [4000.0, None]], "check": "passed", "cancelled": []}
+    trace = _run_one_chunk(monkeypatch, tmp_path, record)
+    assert trace["polarity"] == record      # a section that runs to the end (null) survives the round trip
+    assert "polarity: 2 inverted section(s) flipped before the mixdown" in capsys.readouterr().out
+
+
+def test_run_keeps_a_record_without_sections_in_the_trace_and_does_not_log_a_flip(monkeypatch, tmp_path, capsys):
+    record = {"channels": 1, "sections": [], "check": "skipped: mono source", "cancelled": []}
+    trace = _run_one_chunk(monkeypatch, tmp_path, record)
+    assert trace["polarity"] == record
+    assert "polarity:" not in capsys.readouterr().out
+
+
+def test_run_without_a_polarity_file_writes_a_trace_without_the_key(monkeypatch, tmp_path):
+    assert "polarity" not in _run_one_chunk(monkeypatch, tmp_path, None)

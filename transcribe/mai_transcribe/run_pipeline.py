@@ -5,6 +5,8 @@ It differs from chunked_transcribe only in the transcription backend (MAI instea
 
 Output in <out>:
   mono16k.mp3, plan.json
+  polarity.json        polarity check of the mono mixdown (chunked_transcribe.audio_utils.to_mono16k); when the mix
+                       still cancels the voice, nothing is transcribed and the run exits 5
   chunks/NN.mp3, chunks/NN.json (raw MAI JSON), chunks/NN.txt
   raw_transcript.txt   merged transcript (chunks with no speech dropped)
   mai_words.json       whole-file per-word timestamps [{w,start,end,score}] with chunk offsets added -> build_srt
@@ -23,7 +25,7 @@ from datetime import datetime
 from pathlib import Path
 
 from transcribe import exit_codes
-from transcribe.chunked_transcribe import audio_utils
+from transcribe.chunked_transcribe import audio_utils, polarity
 
 from . import config, transcribe_client
 
@@ -130,7 +132,11 @@ def main():
     if a.workers:
         config.CONCURRENCY = a.workers
     t0 = time.time()
-    res = run(a.input, a.out_dir)
+    try:
+        res = run(a.input, a.out_dir)
+    except polarity.AudioCancelled as e:
+        print(f"AUDIO_CANCELLED: {e}", file=sys.stderr, flush=True)
+        sys.exit(exit_codes.AUDIO_CANCELLED)
     print(f"total time {time.time() - t0:.0f}s")
     if res["failed"]:
         print(f"INCOMPLETE: chunks {sorted(res['failed'])} have no transcript (failed after retry); "

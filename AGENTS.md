@@ -39,7 +39,7 @@ Rules for AI agents working in this repo. Read `README.md` to understand the flo
 - Do not bulk-delete `out/words/*.json`: that is the alignment cache, and each file takes several minutes of GPU to regenerate.
 - Do not commit `out/`, `test-files/`, `.env`, `service-account-key.json`, or `*.log`.
 - Do not write to production. Any import into the downstream system must be run as a dry run first and reviewed by the user.
-- Do not change the exit codes in transcribe/exit_codes.py, the manifest note prefixes (error after retry, 403, hallucination?, skipped, mai fallback, silent, silent blocked), the manifest `engine` and `silent` fields, or the run_trace.json schema without updating desktop-video-streaming-pq, which reads them to refuse partial subtitles, to report chunks MAI transcribed after a Gemini filter block, and to warn about chunks VAD hears as silent.
+- Do not change the exit codes in transcribe/exit_codes.py (3 incomplete, 4 no aligned words, 5 audio cancelled), the manifest note prefixes (error after retry, 403, hallucination?, skipped, mai fallback, silent, silent blocked), the manifest `engine` and `silent` fields, polarity.json and the run_trace.json polarity object, or the run_trace.json schema without updating desktop-video-streaming-pq, which reads them to refuse partial subtitles, to report chunks MAI transcribed after a Gemini filter block, to warn about chunks VAD hears as silent, and to name the stretches of a source whose mono mix is cancelled (exit 5).
 
 ## Testing
 
