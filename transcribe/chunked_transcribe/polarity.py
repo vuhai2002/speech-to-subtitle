@@ -1,5 +1,4 @@
-"""Polarity-aware mono mixdown (spec: plans/261002-1015-audio-phase-inversion/polarity-aware-audio-spec.md in the
-video-streaming-pq workspace; the web and desktop apps implement the same rule).
+"""Polarity-aware mono mixdown; the desktop and web apps implement the same rule with the same constants.
 
 A source whose two channels are polarity-inverted (one is the negative of the other) cancels to near silence when it
 is mixed to mono, and a lecture can be inverted in only part of it. This module finds the inverted SECTIONS second by
@@ -109,12 +108,14 @@ def find_sections(s: Stats) -> list[tuple[float, float | None]]:
 
 def flip_filter(sections: list[tuple[float, float | None]]) -> str:
     """Filter for a named stereo stream: the right channel times -1 inside the sections, linear RAMP_SEC ramps at
-    inner edges; pan re-names the layout (aeval leaves an unnamed "2 channels" layout the encoders reject)."""
+    inner edges; pan re-names the layout (aeval leaves an unnamed "2 channels" layout the encoders reject). The ramps
+    use n/s (samples counted from the first sample, the timeline the statistics use), never t, which starts at the
+    stream's start time."""
     h = RAMP_SEC / 2
     terms = []
     for start, end in sections:
-        rise = "1" if start <= 0 else f"clip((t-({start - h:.3f}))/{RAMP_SEC},0,1)"
-        fall = "1" if end is None else f"clip((({end + h:.3f})-t)/{RAMP_SEC},0,1)"
+        rise = "1" if start <= 0 else f"clip((n/s-({start - h:.3f}))/{RAMP_SEC},0,1)"
+        fall = "1" if end is None else f"clip((({end + h:.3f})-n/s)/{RAMP_SEC},0,1)"
         terms.append(f"{rise}*{fall}")
     gain = "1-2*(" + "+".join(terms) + ")"
     return f"aeval=exprs='val(0)|val(1)*({gain})',pan=stereo|c0=c0|c1=c1"

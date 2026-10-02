@@ -1,4 +1,4 @@
-"""The polarity rule of spec section 3 and the output check of section 4, on synthetic per-second statistics."""
+"""The polarity rule (per-second labels, silence filling, smoothing, seams) and the output check, on synthetic per-second statistics."""
 import numpy as np
 
 from transcribe.chunked_transcribe import polarity
@@ -6,7 +6,7 @@ from transcribe.chunked_transcribe import polarity
 NORMAL = (-20, -20, -20, -60)        # L, R, (L+R)/2, (L-R)/2 in dB: identical channels
 INVERTED = (-20, -20, -80, -20)      # R = -L
 SILENT = (-90, -90, -90, -90)
-MISMATCHED_INVERTED = (-20, -23, -36.7, -21.4)   # R = -0.7 L (Xây Dựng 0:02-0:05): D - S = +15 dB
+MISMATCHED_INVERTED = (-20, -23, -30.5, -22.0)   # R about 3 dB below an inverted L (measured on a real lecture): D - S = +8.5 dB
 TRUE_STEREO = (-20, -20, -24.0, -22.2)           # correlation -0.2 (chanting): D - S = +1.8 dB
 ONE_CHANNEL = (-20, -90, -26.0, -26.0)           # right channel silent: D - S = 0
 
@@ -31,9 +31,7 @@ def test_fully_inverted_source_is_one_section_to_the_end():
 
 def test_inverted_then_normal_flips_up_to_the_silent_seam():
     secs = [INVERTED] * 60 + [SILENT] * 3 + [NORMAL] * 57
-    (start, end), = polarity.find_sections(stats(secs))
-    assert start == 0.0
-    assert 60.0 <= end <= 62.0          # inside the silence, never in speech
+    assert polarity.find_sections(stats(secs)) == [(0.0, 60.025)]
 
 
 def test_seam_moves_to_the_quietest_block():
@@ -70,7 +68,7 @@ def test_flip_filter_ramps_only_inside_the_file():
     assert polarity.flip_filter([(0.0, None)]) == \
         "aeval=exprs='val(0)|val(1)*(1-2*(1*1))',pan=stereo|c0=c0|c1=c1"
     assert polarity.flip_filter([(10.0, 20.0)]) == (
-        "aeval=exprs='val(0)|val(1)*(1-2*(clip((t-(9.990))/0.02,0,1)*clip(((20.010)-t)/0.02,0,1)))',"
+        "aeval=exprs='val(0)|val(1)*(1-2*(clip((n/s-(9.990))/0.02,0,1)*clip(((20.010)-n/s)/0.02,0,1)))',"
         "pan=stereo|c0=c0|c1=c1")
 
 
@@ -94,3 +92,26 @@ def test_audio_cancelled_names_the_stretches():
     e = polarity.AudioCancelled([(3, 8), (3600, 3725)])
     assert str(e) == "the mono mix is cancelled in 00:00:03-00:00:08, 01:00:00-01:02:05"
     assert e.stretches == [(3, 8), (3600, 3725)]
+
+
+def test_merge_happens_before_the_short_run_drop():
+    secs = [NORMAL] * 10 + [INVERTED] * 3 + [NORMAL] * 2 + [INVERTED] * 3 + [NORMAL] * 10
+    assert polarity.find_sections(stats(secs)) == [(9.025, 17.025)]
+
+
+def test_silence_inside_an_inverted_stretch_stays_inverted():
+    assert polarity.find_sections(stats([INVERTED] * 20 + [SILENT] * 4 + [INVERTED] * 20)) == [(0.0, None)]
+
+
+def test_rule_thresholds_at_their_edges():
+    assert polarity.find_sections(stats([(-49.9, -49.9, -109.9, -49.9)] * 10)) == [(0.0, None)]
+    assert polarity.find_sections(stats([(-50.1, -50.1, -110.1, -50.1)] * 10)) == []
+    assert polarity.find_sections(stats([(-20, -20, -26.05, -20.0)] * 10)) == [(0.0, None)]
+    assert polarity.find_sections(stats([(-20, -20, -25.95, -20.0)] * 10)) == []
+    assert polarity.find_sections(stats([NORMAL] * 10 + [INVERTED] * 4 + [NORMAL] * 10)) == []
+
+
+def test_check_threshold_at_its_edge():
+    louder = np.full(6, -20.0)
+    assert polarity.cancelled_stretches(np.full(6, -30.0), louder) == [(0, 6)]
+    assert polarity.cancelled_stretches(np.full(6, -29.9), louder) == []
