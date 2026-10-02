@@ -79,10 +79,11 @@ Transcribe a second pass (different model), then compare the two passes and expo
 | `qc_report.json` | Self-check results: omissions, needs-a-listen, hallucinations, edge repeats |
 | `plan.json` | Chunk plan + speech regions (VAD) |
 | `mono16k.mp3`, `chunks/` | Mono 16 kHz audio and the individual chunks |
+| `polarity.json` | How the mono mixdown treated the source's channels, `{ channels, sections: [[start, end], ...], check, cancelled }`, written by `to_mono16k` next to `mono16k.mp3` on every run whose mixdown finishes, also one that exits 5 (a failed ffmpeg leaves none); `sections` are the polarity-inverted stretches flipped before the mixdown, in seconds from the start (`end` is `null` for one that runs to the end of the file); `check` is `passed`, `failed` or `skipped: mono source`; `cancelled` lists, in seconds, the stretches the mono mix still cancels (empty unless `check` is `failed`, exit 5); a run that gets past the mixdown also copies it into `run_trace.json` as `polarity` |
 
 ## Run trace
 
-`run_trace.json` (schema version 1, `run_trace.py`) is written at the end of every `run_pipeline` run, also when a chunk failed or hit a 403, and completed by `build_srt` (also on exit 4). The desktop app archives it per job, so a run can be audited later without running it again.
+`run_trace.json` (schema version 1, `run_trace.py`) is written at the end of every `run_pipeline` run that gets past the mixdown, also when a chunk failed or hit a 403, and completed by `build_srt` (also on exit 4). A run that exits 5 (the mono mix still cancels the voice) transcribes nothing and writes no trace; `polarity.json` is its only record. The desktop app archives it per job, so a run can be audited later without running it again.
 
 ## Chunks VAD hears as silent
 

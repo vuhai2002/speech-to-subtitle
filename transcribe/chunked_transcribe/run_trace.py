@@ -1,11 +1,12 @@
 """run_trace.json: one file that tells everything a run did, so a run never has to be repeated to be audited.
 
-run_pipeline writes it at the end of every run, complete or not: the run metadata, the VAD segments and, per
-chunk, every Gemini try with its outcome, the MAI fallback result and the final text, plus the optional
-"polarity" record of the mono mixdown (the sections of the source flipped, see polarity.py). build_srt adds the
-alignment results, every sentence's score for chunks VAD hears as silent, and the cue summary (add_build).
-The desktop app adds its own "app" section and archives the file. Times are seconds from the start of the
-input file. Schema version 1.
+run_pipeline writes it at the end of every run that gets past the mixdown, complete or not: the run metadata, the
+VAD segments and, per chunk, every Gemini try with its outcome, the MAI fallback result and the final text, plus
+the optional "polarity" record of the mono mixdown (the sections of the source flipped, see polarity.py). A run
+that polarity.AudioCancelled stops at the mixdown (exit 5) transcribes nothing and writes no trace; its
+polarity.json is the only record. build_srt adds the alignment results, every sentence's score for chunks VAD
+hears as silent, and the cue summary (add_build). The desktop app adds its own "app" section and archives the
+file. Times are seconds from the start of the input file. Schema version 1.
 """
 import hashlib
 import json
